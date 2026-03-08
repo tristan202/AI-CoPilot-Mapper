@@ -348,7 +348,7 @@ EndIf
 If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   
   ; HUSK: Du skal måske omdøbe dit ikon, hvis du vil have det til at passe!
-  If Not LoadImage(#MitBillede, "C:\Users\allan\Documents\Purebasic\gemini.ico")
+  If Not LoadImage(#MitBillede, "aicopilotmapper.ico")
     CreateImage(#MitBillede, 16, 16) 
   EndIf
   
@@ -429,13 +429,12 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   If hMutex : CloseHandle_(hMutex) : EndIf
 EndIf
 ; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 139
-; FirstLine = 115
+; CursorPosition = 350
 ; Folding = --
 ; EnableXP
 ; DPIAware
 ; UseIcon = aicopilotmapper.ico
-; Executable = aicopilotmapper.exe
+; Executable = ..\aicopilotmapper.exe
 ; IncludeVersionInfo
 ; VersionField0 = 1.0.0.0
 ; VersionField1 = 1.0.0.0
