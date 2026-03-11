@@ -1,5 +1,8 @@
 ﻿EnableExplicit
 
+; --- CONSTANTS ---
+#AppVersion = "1.0.1" ; Opdater versionsnummeret her ét sted
+
 ; Browser structure
 Structure BrowserInfo
   Name.s
@@ -13,10 +16,11 @@ Global NewList InstalledBrowsers.BrowserInfo()
 Global IniFile.s = GetCurrentDirectory() + "AICopilotMapper.ini"
 Global AppPath.s = ProgramFilename()
 Global BrowserPath.s = "" 
-Global SelectedAI.s = "Gemini" ; Default AI
+Global SelectedAI.s = "Gemini" 
 Global TargetURL.s = "https://gemini.google.com"
 Global AutoStart.i = 0
 Global Language.s = "DA"
+Global ButtonMode.i = 0 ; 0 = AI Mode, 1 = R-CTRL Mode, 2 = R-ALT Mode
 Global hMutex, hHook
 
 ; String Variables
@@ -24,6 +28,7 @@ Global Txt_MsgBoxTitle.s, Txt_MsgBoxRunning.s
 Global Txt_TrayTooltip.s, Txt_MenuBrowser.s, Txt_MenuAI.s
 Global Txt_MenuAutoStart.s, Txt_MenuLanguage.s, Txt_MenuAbout.s, Txt_MenuExit.s
 Global Txt_AboutTitle.s, Txt_AboutText.s
+Global Txt_MenuMode.s, Txt_ModeAI.s, Txt_ModeCTRL.s, Txt_ModeALT.s
 
 ; Menu IDs
 Enumeration
@@ -42,6 +47,9 @@ Enumeration
   #Menu_AI_Perplexity
   #Menu_AI_Copilot
   #Menu_AI_DeepSeek
+  #Menu_Mode_AI
+  #Menu_Mode_CTRL
+  #Menu_Mode_ALT
   #Menu_AutoStart
   #Menu_Lang_DA
   #Menu_Lang_EN
@@ -54,12 +62,12 @@ Enumeration
   #Menu_Browser_Base = 100 
 EndEnumeration
 
-; Helper function for registry
+; --- HELPER FUNCTIONS ---
+
 Procedure.s ReadRegString(hKeyRoot, KeyPath.s, ValueName.s)
   Protected hKey.i, Type.i, BufferSize.i = 1024
   Protected *Buffer = AllocateMemory(BufferSize)
   Protected Result.s = ""
-  
   If RegOpenKeyEx_(hKeyRoot, KeyPath, 0, #KEY_READ, @hKey) = #ERROR_SUCCESS
     If RegQueryValueEx_(hKey, ValueName, 0, @Type, *Buffer, @BufferSize) = #ERROR_SUCCESS
       If Type = #REG_SZ Or Type = #REG_EXPAND_SZ
@@ -72,30 +80,23 @@ Procedure.s ReadRegString(hKeyRoot, KeyPath.s, ValueName.s)
   ProcedureReturn Result
 EndProcedure
 
-; Find installed browsers
 Procedure GetInstalledBrowsers()
   Protected hKey.i, Index.i = 0
   Protected KeyName.s = Space(256), KeyNameSize.i
   Protected SubKeyName.s, BName.s, BPath.s
-  
   ClearList(InstalledBrowsers())
-  
   If RegOpenKeyEx_(#HKEY_LOCAL_MACHINE, "SOFTWARE\Clients\StartMenuInternet", 0, #KEY_READ, @hKey) = #ERROR_SUCCESS
     Repeat
       KeyNameSize = 256
       If RegEnumKeyEx_(hKey, Index, @KeyName, @KeyNameSize, 0, 0, 0, 0) = #ERROR_SUCCESS
         SubKeyName = "SOFTWARE\Clients\StartMenuInternet\" + Left(KeyName, KeyNameSize)
-        
         BName = ReadRegString(#HKEY_LOCAL_MACHINE, SubKeyName, "")
         If BName = "" : BName = Left(KeyName, KeyNameSize) : EndIf
-        
         BPath = ReadRegString(#HKEY_LOCAL_MACHINE, SubKeyName + "\shell\open\command", "")
-        
         If FindString(LCase(BPath), ".exe")
           BPath = Left(BPath, FindString(LCase(BPath), ".exe") + 3)
           BPath = RemoveString(BPath, #DQUOTE$)
         EndIf
-        
         If BName <> "" And BPath <> ""
           AddElement(InstalledBrowsers())
           InstalledBrowsers()\Name = BName
@@ -108,7 +109,6 @@ Procedure GetInstalledBrowsers()
     ForEver
     RegCloseKey_(hKey)
   EndIf
-  
   If ListSize(InstalledBrowsers()) = 0
     AddElement(InstalledBrowsers())
     InstalledBrowsers()\Name = "System Default"
@@ -116,7 +116,6 @@ Procedure GetInstalledBrowsers()
   EndIf
 EndProcedure
 
-; Update target URL
 Procedure UpdateTargetURL()
   Select SelectedAI
     Case "ChatGPT"    : TargetURL = "https://chatgpt.com"
@@ -128,96 +127,62 @@ Procedure UpdateTargetURL()
   EndSelect
 EndProcedure
 
-; Language strings function
 Procedure UpdateLanguageStrings()
   Protected AppName.s = "AI Copilot Mapper"
+  Protected VerPrefix.s = " v" + #AppVersion + Chr(10)
   
   Select Language
     Case "EN"
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = AppName + " is already running!" + Chr(10) + "You can find the icon in the system tray."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "Select AI"
-      Txt_MenuBrowser = "Select Browser" 
-      Txt_MenuAutoStart = "Start with Windows"
-      Txt_MenuLanguage = "Language"
-      Txt_MenuAbout = "About"
-      Txt_MenuExit = "Exit"
+      Txt_MenuMode = "Button Function" : Txt_ModeAI = "AI Shortcut" : Txt_ModeCTRL = "Right CTRL" : Txt_ModeALT = "Right ALT"
+      Txt_MenuAI = "Select AI" : Txt_MenuBrowser = "Select Browser" : Txt_MenuAutoStart = "Start with Windows"
+      Txt_MenuLanguage = "Language" : Txt_MenuExit = "Exit" : Txt_MenuAbout = "About"
       Txt_AboutTitle = "About " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Developed to remap the Windows Copilot key to your favorite AI."
-      
+      Txt_AboutText = AppName + VerPrefix + "Developed to remap the Copilot key to your favorite AI or a system key."
     Case "ES"
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = "¡" + AppName + " ya se está ejecutando!" + Chr(10) + "Puedes encontrar el icono en la bandeja del sistema."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "Seleccionar IA"
-      Txt_MenuBrowser = "Seleccionar navegador"
-      Txt_MenuAutoStart = "Iniciar con Windows"
-      Txt_MenuLanguage = "Idioma"
-      Txt_MenuAbout = "Acerca de"
-      Txt_MenuExit = "Salir"
+      Txt_MenuMode = "Función del botón" : Txt_ModeAI = "Acceso directo IA" : Txt_ModeCTRL = "CTRL derecho" : Txt_ModeALT = "ALT derecho"
+      Txt_MenuAI = "Seleccionar IA" : Txt_MenuBrowser = "Seleccionar navegador" : Txt_MenuAutoStart = "Iniciar con Windows"
+      Txt_MenuLanguage = "Idioma" : Txt_MenuExit = "Salir" : Txt_MenuAbout = "Acerca de"
       Txt_AboutTitle = "Acerca de " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Desarrollado para reasignar la tecla Copilot de Windows a tu IA favorita."
-      
+      Txt_AboutText = AppName + VerPrefix + "Desarrollado para reasignar la tecla Copilot a tu IA favorita o a una tecla del sistema."
     Case "FR"
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = AppName + " est déjà en cours d'exécution !" + Chr(10) + "Vous pouvez trouver l'icône dans la zone de notification."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "Sélectionner l'IA"
-      Txt_MenuBrowser = "Sélectionner le navigateur"
-      Txt_MenuAutoStart = "Démarrer avec Windows"
-      Txt_MenuLanguage = "Langue"
-      Txt_MenuAbout = "À propos"
-      Txt_MenuExit = "Quitter"
+      Txt_MenuMode = "Fonction du bouton" : Txt_ModeAI = "Raccourci IA" : Txt_ModeCTRL = "CTRL droit" : Txt_ModeALT = "ALT droit"
+      Txt_MenuAI = "Sélectionner l'IA" : Txt_MenuBrowser = "Sélectionner le navigateur" : Txt_MenuAutoStart = "Démarrer avec Windows"
+      Txt_MenuLanguage = "Langue" : Txt_MenuExit = "Quitter" : Txt_MenuAbout = "À propos"
       Txt_AboutTitle = "À propos de " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Développé pour remapper la touche Windows Copilot vers votre IA préférée."
-      
+      Txt_AboutText = AppName + VerPrefix + "Développé pour remapper la touche Copilot vers votre IA préférée ou une touche système."
     Case "IT"
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = AppName + " è già in esecuzione!" + Chr(10) + "Puoi trovare l'icona nella barra delle applicazioni."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "Seleziona IA"
-      Txt_MenuBrowser = "Seleziona browser"
-      Txt_MenuAutoStart = "Avvia con Windows"
-      Txt_MenuLanguage = "Lingua"
-      Txt_MenuAbout = "Informazioni"
-      Txt_MenuExit = "Esci"
+      Txt_MenuMode = "Funzione pulsante" : Txt_ModeAI = "Scorciatoia IA" : Txt_ModeCTRL = "CTRL destro" : Txt_ModeALT = "ALT destro"
+      Txt_MenuAI = "Seleziona IA" : Txt_MenuBrowser = "Seleziona browser" : Txt_MenuAutoStart = "Avvia con Windows"
+      Txt_MenuLanguage = "Lingua" : Txt_MenuExit = "Esci" : Txt_MenuAbout = "Informazioni"
       Txt_AboutTitle = "Informazioni su " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Sviluppato per rimappare il tasto Windows Copilot alla tua IA preferita."
-      
+      Txt_AboutText = AppName + VerPrefix + "Sviluppato per rimappare il tasto Copilot sulla tua IA preferita o su un tasto di sistema."
     Case "DE"
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = AppName + " wird bereits ausgeführt!" + Chr(10) + "Sie finden das Symbol in der Taskleiste."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "KI auswählen"
-      Txt_MenuBrowser = "Browser auswählen"
-      Txt_MenuAutoStart = "Mit Windows starten"
-      Txt_MenuLanguage = "Sprache"
-      Txt_MenuAbout = "Über"
-      Txt_MenuExit = "Beenden"
+      Txt_MenuMode = "Tastenfunktion" : Txt_ModeAI = "KI-Verknüpfung" : Txt_ModeCTRL = "Rechtes CTRL" : Txt_ModeALT = "Rechtes ALT"
+      Txt_MenuAI = "KI auswählen" : Txt_MenuBrowser = "Browser auswählen" : Txt_MenuAutoStart = "Mit Windows starten"
+      Txt_MenuLanguage = "Sprache" : Txt_MenuExit = "Beenden" : Txt_MenuAbout = "Über"
       Txt_AboutTitle = "Über " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Entwickelt, um die Windows Copilot-Taste Ihrer Lieblings-KI neu zuzuweisen."
-      
-    Default ; "DA" is default
-      Txt_MsgBoxTitle = AppName
-      Txt_MsgBoxRunning = AppName + " kører allerede!" + Chr(10) + "Du kan finde ikonet i systembakken."
-      Txt_TrayTooltip = AppName
-      Txt_MenuAI = "Vælg AI"
-      Txt_MenuBrowser = "Vælg Browser" 
-      Txt_MenuAutoStart = "Start med Windows"
-      Txt_MenuLanguage = "Sprog"
-      Txt_MenuAbout = "Om programmet"
-      Txt_MenuExit = "Afslut"
+      Txt_AboutText = AppName + VerPrefix + "Entwickelt, um die Copilot-Taste Ihrer Lieblings-KI oder einer Systemtaste neu zuzuweisen."
+    Default ; DA
+      Txt_MenuMode = "Knap Funktion" : Txt_ModeAI = "AI Genvej" : Txt_ModeCTRL = "Højre CTRL" : Txt_ModeALT = "Højre ALT"
+      Txt_MenuAI = "Vælg AI" : Txt_MenuBrowser = "Vælg Browser" : Txt_MenuAutoStart = "Start med Windows"
+      Txt_MenuLanguage = "Sprog" : Txt_MenuExit = "Afslut" : Txt_MenuAbout = "Om programmet"
       Txt_AboutTitle = "Om " + AppName
-      Txt_AboutText = AppName + " v1.0.0" + Chr(10) + "Udviklet til at omkode Windows Copilot-tasten til din foretrukne AI."
+      Txt_AboutText = AppName + VerPrefix + "Udviklet til at omkode Copilot-tasten til din foretrukne AI eller en systemtast."
   EndSelect
+  Txt_MsgBoxTitle = AppName
+  Txt_TrayTooltip = AppName
 EndProcedure
 
-; Menu builder
 Procedure RebuildMenu()
   Protected Index = 0
-  
   If CreatePopupMenu(#TrayMenu)
+    ; Mode Selection
+    OpenSubMenu(Txt_MenuMode)
+      MenuItem(#Menu_Mode_AI, Txt_ModeAI)
+      MenuItem(#Menu_Mode_CTRL, Txt_ModeCTRL)
+      MenuItem(#Menu_Mode_ALT, Txt_ModeALT)
+    CloseSubMenu()
+    MenuBar()
     
     ; AI submenu
     OpenSubMenu(Txt_MenuAI)
@@ -242,9 +207,8 @@ Procedure RebuildMenu()
     
     MenuBar()
     MenuItem(#Menu_AutoStart, Txt_MenuAutoStart)
-    MenuBar()
     
-    ; Language submenu
+    ; Language Submenu
     OpenSubMenu(Txt_MenuLanguage)
       MenuItem(#Menu_Lang_DA, "Dansk")
       MenuItem(#Menu_Lang_EN, "English")
@@ -258,17 +222,10 @@ Procedure RebuildMenu()
     MenuItem(#Menu_About, Txt_MenuAbout)
     MenuItem(#Menu_Exit, Txt_MenuExit)
     
-    ; Tick chosen AI
-    Select SelectedAI
-      Case "ChatGPT"    : SetMenuItemState(#TrayMenu, #Menu_AI_ChatGPT, 1)
-      Case "Claude"     : SetMenuItemState(#TrayMenu, #Menu_AI_Claude, 1)
-      Case "DeepSeek"   : SetMenuItemState(#TrayMenu, #Menu_AI_DeepSeek, 1)
-      Case "Perplexity" : SetMenuItemState(#TrayMenu, #Menu_AI_Perplexity, 1)
-      Case "Copilot"    : SetMenuItemState(#TrayMenu, #Menu_AI_Copilot, 1)
-      Default           : SetMenuItemState(#TrayMenu, #Menu_AI_Gemini, 1)
-    EndSelect
-    
-    ; Tick for the rest
+    ; Set States
+    SetMenuItemState(#TrayMenu, #Menu_Mode_AI, Bool(ButtonMode = 0))
+    SetMenuItemState(#TrayMenu, #Menu_Mode_CTRL, Bool(ButtonMode = 1))
+    SetMenuItemState(#TrayMenu, #Menu_Mode_ALT, Bool(ButtonMode = 2))
     SetMenuItemState(#TrayMenu, #Menu_AutoStart, AutoStart)
     
     Select Language
@@ -279,10 +236,18 @@ Procedure RebuildMenu()
       Case "DE": SetMenuItemState(#TrayMenu, #Menu_Lang_DE, 1)
       Default:   SetMenuItemState(#TrayMenu, #Menu_Lang_DA, 1)
     EndSelect
+    
+    Select SelectedAI
+      Case "ChatGPT"    : SetMenuItemState(#TrayMenu, #Menu_AI_ChatGPT, 1)
+      Case "Claude"     : SetMenuItemState(#TrayMenu, #Menu_AI_Claude, 1)
+      Case "DeepSeek"   : SetMenuItemState(#TrayMenu, #Menu_AI_DeepSeek, 1)
+      Case "Perplexity" : SetMenuItemState(#TrayMenu, #Menu_AI_Perplexity, 1)
+      Case "Copilot"    : SetMenuItemState(#TrayMenu, #Menu_AI_Copilot, 1)
+      Default           : SetMenuItemState(#TrayMenu, #Menu_AI_Gemini, 1)
+    EndSelect
   EndIf
 EndProcedure
 
-; Windows autostart registry management
 Procedure SetAutoStartRegistry(Enable.i)
   Protected hKey.i
   If RegOpenKeyEx_(#HKEY_CURRENT_USER, "Software\Microsoft\Windows\CurrentVersion\Run", 0, #KEY_ALL_ACCESS, @hKey) = #ERROR_SUCCESS
@@ -295,7 +260,6 @@ Procedure SetAutoStartRegistry(Enable.i)
   EndIf
 EndProcedure
 
-; Load/Save settings
 Procedure SaveSettings()
   If OpenPreferences(IniFile) Or CreatePreferences(IniFile)
     PreferenceGroup("Settings")
@@ -303,6 +267,7 @@ Procedure SaveSettings()
     WritePreferenceInteger("AutoStart", AutoStart)
     WritePreferenceString("Language", Language)
     WritePreferenceString("AI", SelectedAI)
+    WritePreferenceInteger("ButtonMode", ButtonMode)
     ClosePreferences()
   EndIf
 EndProcedure
@@ -314,174 +279,122 @@ Procedure LoadSettings()
     AutoStart = ReadPreferenceInteger("AutoStart", 0)
     Language = ReadPreferenceString("Language", "DA")
     SelectedAI = ReadPreferenceString("AI", "Gemini")
+    ButtonMode = ReadPreferenceInteger("ButtonMode", 0)
     ClosePreferences()
   EndIf
-  
   If BrowserPath = ""
-    FirstElement(InstalledBrowsers())
-    BrowserPath = InstalledBrowsers()\Path
+    If FirstElement(InstalledBrowsers())
+      BrowserPath = InstalledBrowsers()\Path
+    EndIf
   EndIf
-  
   UpdateTargetURL() 
 EndProcedure
 
-; Keyboard Hook procedure
+; --- KEYBOARD HOOK ---
+
 Procedure.l KeyboardProc(nCode, wParam, lParam)
   Protected *pkbdll.KBDLLHOOKSTRUCT = lParam
-  If nCode = 0
+  If nCode = #HC_ACTION
     If *pkbdll\vkCode = $86 ; Copilot Key / F23
-      If wParam = $0100 ; Keydown
-        RunProgram(BrowserPath, "--app=" + TargetURL, "")
-      EndIf
-      ProcedureReturn 1 ; Block original event
+      
+      Select ButtonMode
+        Case 0 ; AI Mode
+          If wParam = #WM_KEYDOWN
+            RunProgram(BrowserPath, "--app=" + TargetURL, "")
+          EndIf
+          
+        Case 1, 2 ; Mapping Mode (CTRL/ALT)
+          Protected VKey.i
+          If ButtonMode = 1 : VKey = #VK_RCONTROL : Else : VKey = #VK_RMENU : EndIf
+          
+          If wParam = #WM_KEYDOWN Or wParam = #WM_SYSKEYDOWN
+            ; Neutralize potential ghost keys (Win+Shift)
+            keybd_event_(#VK_LSHIFT, 0, #KEYEVENTF_KEYUP, 0)
+            keybd_event_(#VK_LWIN, 0, #KEYEVENTF_KEYUP, 0)
+            keybd_event_(VKey, 0, 0, 0)
+          ElseIf wParam = #WM_KEYUP Or wParam = #WM_SYSKEYUP
+            keybd_event_(VKey, 0, #KEYEVENTF_KEYUP, 0)
+          EndIf
+      EndSelect
+      
+      ProcedureReturn 1 
     EndIf
   EndIf
   ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam)
 EndProcedure
 
-; --- MAIN PROGRAM START ---
+; --- MAIN ---
+
 GetInstalledBrowsers()
 LoadSettings()
 UpdateLanguageStrings()
-SetAutoStartRegistry(AutoStart)
 
-; Unique Mutex to prevent multiple instances
 Global MutexName.s = "Global\AICopilotMapper_Unique_ID"
 hMutex = CreateMutex_(0, 1, @MutexName)
-If GetLastError_() = 183
-  MessageRequester(Txt_MsgBoxTitle, Txt_MsgBoxRunning, #PB_MessageRequester_Info)
-  If hMutex : CloseHandle_(hMutex) : EndIf
-  End
-EndIf
+If GetLastError_() = 183 : End : EndIf
 
-; Invisible main window to handle tray events
 If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
-  
-  ; Load Icon from DataSection (Self-contained)
-  If Not CatchImage(#AppIcon, ?AppIconStart, ?AppIconEnd - ?AppIconStart)
-    ; Fallback if catching fails
-    CreateImage(#AppIcon, 16, 16) 
-    StartDrawing(ImageOutput(#AppIcon))
-      Box(0, 0, 16, 16, RGB(255, 0, 255)) ; Pink square indicates a resource error
-    StopDrawing()
-  EndIf
-  
+  CatchImage(#AppIcon, ?AppIconStart, ?AppIconEnd - ?AppIconStart)
   AddSysTrayIcon(#TrayIcon, WindowID(#MainWin), ImageID(#AppIcon))
-  SysTrayIconToolTip(#TrayIcon, Txt_TrayTooltip)
-  
   RebuildMenu()
-  
-  ; Install Keyboard Hook
   hHook = SetWindowsHookEx_(13, @KeyboardProc(), GetModuleHandle_(0), 0)
   
-  ; Main Event Loop
   Repeat
-    Define Event = WaitWindowEvent()
+    Define Event.i = WaitWindowEvent()
     Select Event
       Case #PB_Event_SysTray
-        If EventType() = #PB_EventType_RightClick
-          DisplayPopupMenu(#TrayMenu, WindowID(#MainWin))
-        EndIf
-        
+        If EventType() = #PB_EventType_RightClick : DisplayPopupMenu(#TrayMenu, WindowID(#MainWin)) : EndIf
       Case #PB_Event_Menu
-        Define MenuID = EventMenu()
+        Define MenuID.i = EventMenu()
         
-        ; Browser selection
         If MenuID >= #Menu_Browser_Base And MenuID < #Menu_Browser_Base + ListSize(InstalledBrowsers())
           SelectElement(InstalledBrowsers(), MenuID - #Menu_Browser_Base)
-          BrowserPath = InstalledBrowsers()\Path
-          SaveSettings()
-          RebuildMenu() 
-          
+          BrowserPath = InstalledBrowsers()\Path : SaveSettings() : RebuildMenu()
         Else
           Select MenuID
-            ; --- AI SELECTION ---
-            Case #Menu_AI_Gemini, #Menu_AI_ChatGPT, #Menu_AI_Claude, #Menu_AI_DeepSeek, #Menu_AI_Perplexity, #Menu_AI_Copilot
+            Case #Menu_Mode_AI : ButtonMode = 0 : SaveSettings() : RebuildMenu()
+            Case #Menu_Mode_CTRL : ButtonMode = 1 : SaveSettings() : RebuildMenu()
+            Case #Menu_Mode_ALT : ButtonMode = 2 : SaveSettings() : RebuildMenu()
+            Case #Menu_AI_Gemini To #Menu_AI_Copilot
               Select MenuID
-                Case #Menu_AI_Gemini    : SelectedAI = "Gemini"
-                Case #Menu_AI_ChatGPT   : SelectedAI = "ChatGPT"
-                Case #Menu_AI_Claude    : SelectedAI = "Claude"
-                Case #Menu_AI_DeepSeek  : SelectedAI = "DeepSeek"
-                Case #Menu_AI_Perplexity: SelectedAI = "Perplexity"
-                Case #Menu_AI_Copilot   : SelectedAI = "Copilot"
+                Case #Menu_AI_Gemini : SelectedAI = "Gemini"
+                Case #Menu_AI_ChatGPT : SelectedAI = "ChatGPT"
+                Case #Menu_AI_Claude : SelectedAI = "Claude"
+                Case #Menu_AI_DeepSeek : SelectedAI = "DeepSeek"
+                Case #Menu_AI_Perplexity : SelectedAI = "Perplexity"
+                Case #Menu_AI_Copilot : SelectedAI = "Copilot"
               EndSelect
-              UpdateTargetURL()
-              SaveSettings()
-              RebuildMenu()
-
-            ; --- OTHER FUNCTIONS ---
-            Case #Menu_AutoStart
-              AutoStart = 1 - AutoStart 
-              SetAutoStartRegistry(AutoStart)
-              SaveSettings()
-              SetMenuItemState(#TrayMenu, #Menu_AutoStart, AutoStart)
-              
-            Case #Menu_Lang_DA, #Menu_Lang_EN, #Menu_Lang_ES, #Menu_Lang_FR, #Menu_Lang_IT, #Menu_Lang_DE
+              UpdateTargetURL() : SaveSettings() : RebuildMenu()
+            Case #Menu_Lang_DA To #Menu_Lang_DE
               Select MenuID
-                Case #Menu_Lang_DA: Language = "DA"
-                Case #Menu_Lang_EN: Language = "EN"
-                Case #Menu_Lang_ES: Language = "ES"
-                Case #Menu_Lang_FR: Language = "FR"
-                Case #Menu_Lang_IT: Language = "IT"
-                Case #Menu_Lang_DE: Language = "DE"
+                Case #Menu_Lang_DA : Language = "DA"
+                Case #Menu_Lang_EN : Language = "EN"
+                Case #Menu_Lang_ES : Language = "ES"
+                Case #Menu_Lang_FR : Language = "FR"
+                Case #Menu_Lang_IT : Language = "IT"
+                Case #Menu_Lang_DE : Language = "DE"
               EndSelect
-              SaveSettings()
-              UpdateLanguageStrings()
-              RebuildMenu() 
-              SysTrayIconToolTip(#TrayIcon, Txt_TrayTooltip) 
-              
+              UpdateLanguageStrings() : SaveSettings() : RebuildMenu()
+            Case #Menu_AutoStart : AutoStart = 1 - AutoStart : SetAutoStartRegistry(AutoStart) : SaveSettings() : RebuildMenu()
             Case #Menu_About
-              If OpenWindow(#AboutWin, 0, 0, 300, 220, Txt_AboutTitle, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
-                StickyWindow(#AboutWin, #True)
-                ImageGadget(#About_ImageGadget, 126, 20, 48, 48, ImageID(#AppIcon))    
-                TextGadget(#About_TextGadget, 10, 80, 280, 60, Txt_AboutText, #PB_Text_Center)
-                HyperLinkGadget(#About_LinkGadget, 90, 145, 280, 20, "Visit GitHub Repository", RGB(0, 0, 255), #PB_HyperLink_Underline)
-                SetGadgetColor(#About_LinkGadget, #PB_Gadget_FrontColor, RGB(0, 102, 204))
-                ButtonGadget(#About_CloseBtn, 110, 180, 80, 25, "OK")    
-                Repeat
-                  Define AboutEvent = WaitWindowEvent()
-                  Select AboutEvent
-                    Case #PB_Event_Gadget
-                      Select EventGadget()
-                        Case #About_LinkGadget
-                          RunProgram("https://github.com/tristan202/AI-Copilot-Mapper")
-              
-                        Case #About_CloseBtn
-                          CloseWindow(#AboutWin)
-                          Break
-                      EndSelect
-          
-                    Case #PB_Event_CloseWindow
-                      If EventWindow() = #AboutWin
-                        CloseWindow(#AboutWin)
-                        Break
-                      EndIf
-                  EndSelect
-                ForEver
-              EndIf
-              
-            Case #Menu_Exit
-              Break
+              ; Simpel About Dialog
+              MessageRequester(Txt_AboutTitle, Txt_AboutText, #PB_MessageRequester_Info)
+            Case #Menu_Exit : Break
           EndSelect
         EndIf
     EndSelect
   Until Event = #PB_Event_CloseWindow
-
-  ; Cleanup
+  
   If hHook : UnhookWindowsHookEx_(hHook) : EndIf
-  RemoveSysTrayIcon(#TrayIcon)
-  If hMutex : CloseHandle_(hMutex) : EndIf
 EndIf
 
-; --- DATA SECTION FOR EMBEDDED RESOURCES ---
 DataSection
   AppIconStart: 
     IncludeBinary "aicopilotmapper.ico"
   AppIconEnd:
 EndDataSection
 ; IDE Options = PureBasic 6.21 (Windows - x64)
-; CursorPosition = 438
-; FirstLine = 424
+; CursorPosition = 3
 ; Folding = --
 ; Optimizer
 ; EnableXP
@@ -489,13 +402,16 @@ EndDataSection
 ; UseIcon = aicopilotmapper.ico
 ; Executable = ..\AICopilotMapper.exe
 ; DisableDebugger
+; CommandLine = "C:\Program Files\PureBasic\upx\upx.exe"
+; CurrentDirectory = ..\
+; CompileSourceDirectory
 ; IncludeVersionInfo
-; VersionField0 = 1.0.0.0
+; VersionField0 = 1.0.1
 ; VersionField1 = 1.0.0.0
 ; VersionField2 = tristan202
 ; VersionField3 = AI CoPilot Mapper
-; VersionField4 = 1.0.0
-; VersionField5 = 1.0.0
+; VersionField4 = 1.0.1
+; VersionField5 = 1.0.1
 ; VersionField6 = Maps CoPilot key to any AI
 ; VersionField7 = aicopilotmapper
 ; VersionField8 = aicopilotmapper.exe
