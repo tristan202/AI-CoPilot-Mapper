@@ -13,7 +13,7 @@ EndStructure
 Global NewList InstalledBrowsers.BrowserInfo()
 
 ; Settings & Files
-Global IniFile.s = GetCurrentDirectory() + "AICopilotMapper.ini"
+Global IniFile.s = GetPathPart(ProgramFilename()) + "AICopilotMapper.ini"
 Global AppPath.s = ProgramFilename()
 Global BrowserPath.s = "" 
 Global SelectedAI.s = "Gemini" 
@@ -253,16 +253,31 @@ Procedure RebuildMenu()
   EndIf
 EndProcedure
 
-; Handles Windows Auto-start registry key
 Procedure SetAutoStartRegistry(Enable.i)
-  Protected hKey.i
-  If RegOpenKeyEx_(#HKEY_CURRENT_USER, "Software\Microsoft\Windows\CurrentVersion\Run", 0, #KEY_ALL_ACCESS, @hKey) = #ERROR_SUCCESS
-    If Enable = 1
-      RegSetValueEx_(hKey, "AICopilotMapper", 0, #REG_SZ, @AppPath, StringByteLength(AppPath) + SizeOf(Character))
+  Protected hKey.i, Result.i
+  Protected KeyPath.s = "Software\Microsoft\Windows\CurrentVersion\Run"
+  Protected ValueName.s = "AICopilotMapper"
+  Protected Path.s = Chr(34) + ProgramFilename() + Chr(34)
+  Protected DataSize.i = StringByteLength(Path) + SizeOf(Character)
+  
+  ; #KEY_SET_VALUE ($0002) beder kun om lov til at skrive/slette en værdi. 
+  ; Dette undgår oftest at trigge Antivirus og Windows' sikkerhedsblokeringer.
+  Protected AccessMask.i = $0002 
+  
+  Result = RegOpenKeyEx_(#HKEY_CURRENT_USER, KeyPath, 0, AccessMask, @hKey)
+  
+  If Result = #ERROR_SUCCESS
+    If Enable
+      Result = RegSetValueEx_(hKey, ValueName, 0, #REG_SZ, @Path, DataSize)
+      Debug "RegSetValueEx (Skriv) resultat: " + Str(Result)
     Else
-      RegDeleteValue_(hKey, "AICopilotMapper")
+      Result = RegDeleteValue_(hKey, ValueName)
+      Debug "RegDeleteValue (Slet) resultat: " + Str(Result)
     EndIf
     RegCloseKey_(hKey)
+  Else
+    ; Hvis Windows STADIG blokerer, får vi nu at vide hvorfor!
+    MessageRequester("Rettighedsfejl", "Windows nægtede adgang til Autostart." + Chr(10) + "Fejlkode: " + Str(Result), #PB_MessageRequester_Warning)
   EndIf
 EndProcedure
 
@@ -447,12 +462,14 @@ DataSection
   AppIconEnd:
 EndDataSection
 ; IDE Options = PureBasic 6.30 (Windows - x64)
-; CursorPosition = 3
+; CursorPosition = 275
+; FirstLine = 248
 ; Folding = --
 ; EnableXP
 ; DPIAware
 ; UseIcon = aicopilotmapper.ico
 ; Executable = ..\AICopilotMapper.exe
+; Compiler = PureBasic 6.30 (Windows - x64)
 ; IncludeVersionInfo
 ; VersionField0 = 1.0.0.0
 ; VersionField1 = 1.0.0.0
