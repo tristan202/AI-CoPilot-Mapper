@@ -11,6 +11,8 @@ The program runs discreetly in the background via the system tray, giving you fu
 * **Auto-start:** Can easily be configured to start automatically with Windows.
 * **Memory:** Saves your preferences locally in an `.ini` file.
 
+There are some issues with certain antivirus programs not allowing the autostart to be written to registry.
+
 ## 🛠️ How to Compile (Source Code)
 
 To build the program from the source code, you will need PureBasic. Follow these simple steps to create your own `.exe` file:
