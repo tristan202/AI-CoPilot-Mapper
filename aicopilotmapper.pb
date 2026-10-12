@@ -1,8 +1,8 @@
 ﻿; ============================================================================
 ; Application: AI Copilot Mapper
-; Version: 1.5.0
+; Version: 1.5.0 (Fully Localized Settings GUI)
 ; Description: Remaps the Windows Copilot key (or custom hotkey) to AI services.
-;              Features an embedded WebView2 browser and per-app profile support.
+;              Features an embedded WebView2 browser, settings UI and profiles.
 ; ============================================================================
 
 EnableExplicit
@@ -15,9 +15,8 @@ Import "Kernel32.lib"
 EndImport
 
 ; --- CONSTANTS ---
-#AppVersion = "1.5.0"
+#AppVersion = "1.6.0"
 
-; Modifier flag-konstanter til brugerdefinerede genveje
 #HOTKEY_MOD_ALT   = $01
 #HOTKEY_MOD_CTRL  = $02
 #HOTKEY_MOD_SHIFT = $04
@@ -71,7 +70,7 @@ Global TargetURL.s = "https://gemini.google.com"
 Global AutoStart.i = 0
 Global Language.s = "DA"
 
-; Custom Hotkey Indstillinger ($86 = Copilot / F23 hardware standard)
+; Custom Hotkey
 Global TriggerVK.w = $86
 Global TriggerModifiers.i = 0
 Global TriggerKeyName.s = "Copilot-tast"
@@ -104,19 +103,24 @@ Global CachedProfilePaused.i = -1
 
 ; Sprogstrenge
 Global Txt_MsgBoxTitle.s, Txt_MsgBoxRunning.s
-Global Txt_TrayTooltip.s, Txt_MenuBrowser.s, Txt_MenuAI.s
-Global Txt_MenuAutoStart.s, Txt_MenuLanguage.s, Txt_MenuAbout.s, Txt_MenuExit.s
+Global Txt_TrayTooltip.s, Txt_MenuAbout.s, Txt_MenuExit.s
 Global Txt_AboutTitle.s, Txt_AboutText.s
-Global Txt_MenuMode.s, Txt_ModeAI.s, Txt_ModeCTRL.s, Txt_ModeALT.s
-Global Txt_MenuLaunchMode.s, Txt_LaunchApp.s, Txt_LaunchTab.s, Txt_LaunchWindow.s, Txt_LaunchDefault.s
-Global Txt_MenuPause.s, Txt_MenuProfiles.s, Txt_ProfileOpen.s, Txt_ProfileReload.s, Txt_ProfileTemplate.s
-Global Txt_CustomAIAdd.s, Txt_CustomAIRemove.s
-Global Txt_MenuEmbedded.s 
+Global Txt_MenuPause.s, Txt_MenuSettings.s, Txt_MenuOpenAI.s
+Global Txt_ModeAI.s, Txt_ModeCTRL.s, Txt_ModeALT.s
+Global Txt_LaunchApp.s, Txt_LaunchTab.s, Txt_LaunchWindow.s, Txt_LaunchDefault.s
 Global Txt_CustomAINamePrompt.s, Txt_CustomAIURLPrompt.s
 Global Txt_CustomAINotCustomTitle.s, Txt_CustomAINotCustomMsg.s
 Global Txt_RegErrorTitle.s, Txt_RegErrorMsg.s
 Global Txt_ProfileReloadedTitle.s, Txt_ProfileReloadedMsg.s
+
+; Nye strenge for Settings & Hotkey UI
 Global Txt_MenuHotkey.s, Txt_HotkeyConfigure.s, Txt_HotkeyReset.s, Txt_HotkeyCurrent.s
+Global Txt_HotkeyPrompt.s, Txt_HotkeyWaiting.s, Txt_HotkeyCancel.s
+Global Txt_SettingsTitle.s, Txt_FrameHotkey.s, Txt_BtnRecord.s, Txt_BtnReset.s
+Global Txt_LabelButtonAction.s, Txt_FrameAI.s, Txt_BtnAddCustom.s, Txt_BtnRemoveSelected.s
+Global Txt_FrameBrowser.s, Txt_MenuEmbedded.s, Txt_LabelExternalBrowser.s, Txt_MenuLaunchMode.s
+Global Txt_FrameSystem.s, Txt_MenuAutoStart.s, Txt_MenuLanguage.s
+Global Txt_BtnOpenProfiles.s, Txt_BtnReloadProfiles.s, Txt_BtnClose.s
 
 ; ----------------------------------------------------------------------------
 ; ENUMERATIONS
@@ -136,35 +140,48 @@ Enumeration
   #AIWin
   #AICombo
   #AIGadget
+  
+  ; Settings Window & Gadgets
+  #SettingsWin
+  #Set_FrameKey
+  #Set_KeyLabel
+  #Set_BtnRecordKey
+  #Set_BtnResetKey
+  #Set_LabelBtnAction
+  #Set_ComboMode
+  #Set_FrameAI
+  #Set_ComboAI
+  #Set_BtnAddAI
+  #Set_BtnDelAI
+  #Set_FrameBrowser
+  #Set_ChkEmbedded
+  #Set_LabelBrowser
+  #Set_ComboBrowser
+  #Set_LabelLaunchMode
+  #Set_ComboLaunchMode
+  #Set_FrameSystem
+  #Set_ChkAutoStart
+  #Set_LabelLang
+  #Set_ComboLang
+  #Set_BtnOpenProfiles
+  #Set_BtnReloadProfiles
+  #Set_BtnSaveClose
+  
+  ; Hotkey Dialog
   #HotkeyWin
   #Hotkey_TextPrompt
   #Hotkey_TextStatus
   #Hotkey_BtnCancel
+  
+  ; Tray Menu
   #TrayMenu
   #TrayIcon
   #AppIcon
-  #Menu_Mode_AI
-  #Menu_Mode_CTRL
-  #Menu_Mode_ALT
-  #Menu_Launch_App
-  #Menu_Launch_Tab
-  #Menu_Launch_Window
-  #Menu_Launch_Default
-  #Menu_Embedded
-  #Menu_AutoStart
-  #Menu_Pause
-  #Menu_CustomAI_Add
-  #Menu_CustomAI_Remove
-  #Menu_Hotkey_Config
-  #Menu_Hotkey_Reset
-  #Menu_Profile_Open
-  #Menu_Profile_Reload
-  #Menu_Profile_Template
-  #Menu_About
-  #Menu_Exit
-  #Menu_Browser_Base = 1000 
-  #Menu_Lang_Base    = 2000 
-  #Menu_AI_Base      = 3000 
+  #Menu_Tray_OpenAI
+  #Menu_Tray_Pause
+  #Menu_Tray_Settings
+  #Menu_Tray_About
+  #Menu_Tray_Exit
 EndEnumeration
 
 ; ----------------------------------------------------------------------------
@@ -389,7 +406,6 @@ Procedure UpdateTargetURL()
   TargetURL = GetAIURLByName(SelectedAI)
 EndProcedure
 
-; Konverterer en Virtual-Key code og modifiers til en læsbar tekststreng
 Procedure.s FormatKeyCombo(vkCode.w, Modifiers.i)
   Protected Text.s = ""
   If Modifiers & #HOTKEY_MOD_CTRL  : Text + "Ctrl + "  : EndIf
@@ -428,32 +444,6 @@ Procedure.s FormatKeyCombo(vkCode.w, Modifiers.i)
   ProcedureReturn Text
 EndProcedure
 
-Procedure AddOrEditCustomAI()
-  Protected Name.s, URL.s
-  Name = InputRequester("Custom AI", Txt_CustomAINamePrompt, "")
-  If Trim(Name) = "" : ProcedureReturn : EndIf
-  URL = InputRequester("Custom AI", Txt_CustomAIURLPrompt, "http://localhost:3000")
-  URL = NormalizeURL(URL)
-  If Trim(URL) = "" : ProcedureReturn : EndIf
-  AddAIService(Name, URL, 1)
-  SelectedAI = Trim(Name)
-  UpdateTargetURL()
-  SaveCustomAIServices()
-EndProcedure
-
-Procedure RemoveSelectedCustomAI()
-  ForEach AIServices()
-    If LCase(AIServices()\Name) = LCase(SelectedAI) And AIServices()\IsCustom
-      DeleteElement(AIServices())
-      SelectedAI = "Gemini"
-      UpdateTargetURL()
-      SaveCustomAIServices()
-      ProcedureReturn
-    EndIf
-  Next
-  MessageRequester(Txt_CustomAINotCustomTitle, Txt_CustomAINotCustomMsg, #PB_MessageRequester_Info)
-EndProcedure
-
 Procedure.s LaunchModeName(Mode.i)
   Select Mode
     Case 0 : ProcedureReturn Txt_LaunchApp
@@ -464,18 +454,39 @@ Procedure.s LaunchModeName(Mode.i)
   ProcedureReturn Txt_LaunchApp
 EndProcedure
 
+Procedure.i GetGadgetTextWidth(GadgetID.i, Text.s)
+  Protected hDC.i, Size.SIZE, Font.i, OldFont.i, Width.i = 85
+  
+  If IsGadget(GadgetID)
+    hDC = GetDC_(GadgetID(GadgetID))
+    If hDC
+      Font = SendMessage_(GadgetID(GadgetID), #WM_GETFONT, 0, 0)
+      If Font : OldFont = SelectObject_(hDC, Font) : EndIf
+      
+      If GetTextExtentPoint32_(hDC, Text, Len(Text), @Size)
+        Width = Size\cx + 20 ; +20 px padding til knappens ramme
+      EndIf
+      
+      If OldFont : SelectObject_(hDC, OldFont) : EndIf
+      ReleaseDC_(GadgetID(GadgetID), hDC)
+    EndIf
+  EndIf
+  
+  ProcedureReturn Width
+EndProcedure
+
 ; ----------------------------------------------------------------------------
 ; CORE LOGIC: WINDOW & BROWSER LAUNCHERS
 ; ----------------------------------------------------------------------------
-Procedure PopulateAICombo()
+Procedure PopulateAICombo(ComboGadgetID.i)
   Protected i.i
-  ClearGadgetItems(#AICombo)
+  ClearGadgetItems(ComboGadgetID)
   ForEach AIServices()
-    AddGadgetItem(#AICombo, -1, AIServices()\Name)
+    AddGadgetItem(ComboGadgetID, -1, AIServices()\Name)
   Next
-  For i = 0 To CountGadgetItems(#AICombo) - 1
-    If LCase(GetGadgetItemText(#AICombo, i)) = LCase(SelectedAI)
-      SetGadgetState(#AICombo, i)
+  For i = 0 To CountGadgetItems(ComboGadgetID) - 1
+    If LCase(GetGadgetItemText(ComboGadgetID, i)) = LCase(SelectedAI)
+      SetGadgetState(ComboGadgetID, i)
       Break
     EndIf
   Next
@@ -491,7 +502,7 @@ Procedure OpenEmbeddedAI(URL.s)
     SetActiveWindow(#AIWin)
     StickyWindow(#AIWin, 0)
     SetGadgetText(#AIGadget, URL)
-    PopulateAICombo()
+    PopulateAICombo(#AICombo)
     ProcedureReturn
   EndIf
   
@@ -500,7 +511,7 @@ Procedure OpenEmbeddedAI(URL.s)
     SetActiveWindow(#AIWin)
     StickyWindow(#AIWin, 0)
     ComboBoxGadget(#AICombo, 10, 5, 250, 25)
-    PopulateAICombo()
+    PopulateAICombo(#AICombo)
     If WebViewGadget(#AIGadget, 0, 35, 1024, 768 - 35)
       SetGadgetText(#AIGadget, URL) 
       ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
@@ -541,219 +552,6 @@ Procedure LaunchTarget(URL.s, UseLaunchMode.i)
     Default
       RunProgram(URL, "", "")
   EndSelect
-EndProcedure
-
-; ----------------------------------------------------------------------------
-; LOCALIZATION & SYSTEM TRAY
-; ----------------------------------------------------------------------------
-Procedure UpdateLanguageStrings()
-  Protected AppName.s = "AI Copilot Mapper"
-  Protected VerPrefix.s = " v" + #AppVersion + Chr(10)
-  Protected LngFile.s = GetPathPart(ProgramFilename()) + Language + ".lng"
-  
-  Txt_MenuMode = "Knap Funktion" : Txt_ModeAI = "AI Genvej" : Txt_ModeCTRL = "Højre CTRL" : Txt_ModeALT = "Højre ALT"
-  Txt_MenuAI = "Vælg AI" : Txt_MenuBrowser = "Vælg Browser" : Txt_MenuAutoStart = "Start med Windows"
-  Txt_MenuLanguage = "Sprog" : Txt_MenuExit = "Afslut" : Txt_MenuAbout = "Om programmet"
-  Txt_MenuLaunchMode = "Åbningsmetode" : Txt_LaunchApp = "App-vindue" : Txt_LaunchTab = "Normal fane" : Txt_LaunchWindow = "Nyt vindue" : Txt_LaunchDefault = "Systemstandard"
-  Txt_MenuPause = "Pause mapping"
-  Txt_MenuProfiles = "Profiler pr. app"
-  Txt_ProfileOpen = "Åbn profil-fil"
-  Txt_ProfileReload = "Genindlæs profiler"
-  Txt_ProfileTemplate = "Opret profil-skabelon"
-  Txt_CustomAIAdd = "Tilføj/ret custom AI..."
-  Txt_CustomAIRemove = "Fjern valgt custom AI"
-  Txt_MenuEmbedded = "Brug Indbygget View (Hurtig)"
-  Txt_AboutTitle = "Om " + AppName
-  Txt_AboutText = AppName + VerPrefix + "Omkod Copilot-tasten eller din egen brugerdefinerede genvej til en AI eller modtast."
-  Txt_MsgBoxRunning = "Programmet kører allerede."
-  Txt_CustomAINamePrompt = "Navn på AI-tjenesten:" + Chr(10) + "Eksempel: Open WebUI"
-  Txt_CustomAIURLPrompt = "URL til AI-tjenesten:" + Chr(10) + "Eksempel: http://localhost:3000"
-  Txt_CustomAINotCustomTitle = "Custom AI"
-  Txt_CustomAINotCustomMsg = "Den valgte AI er ikke en custom AI og kan derfor ikke fjernes her."
-  Txt_RegErrorTitle = "Rettighedsfejl"
-  Txt_RegErrorMsg = "Windows nægtede adgang til Autostart."
-  Txt_ProfileReloadedTitle = "Profiler"
-  Txt_ProfileReloadedMsg = "Profiler er genindlæst."
-  Txt_MenuHotkey = "Genvejstast"
-  Txt_HotkeyConfigure = "Optag ny genvej..."
-  Txt_HotkeyReset = "Nulstil til Copilot-tast"
-  Txt_HotkeyCurrent = "Aktiv genvej: "
-  
-  If FileSize(LngFile) > 0
-    If OpenPreferences(LngFile, #PB_UTF8)
-      PreferenceGroup("Language")
-      Txt_MenuMode = ReadPreferenceString("MenuMode", Txt_MenuMode)
-      Txt_ModeAI = ReadPreferenceString("ModeAI", Txt_ModeAI)
-      Txt_ModeCTRL = ReadPreferenceString("ModeCTRL", Txt_ModeCTRL)
-      Txt_ModeALT = ReadPreferenceString("ModeALT", Txt_ModeALT)
-      Txt_MenuAI = ReadPreferenceString("MenuAI", Txt_MenuAI)
-      Txt_MenuBrowser = ReadPreferenceString("MenuBrowser", Txt_MenuBrowser)
-      Txt_MenuAutoStart = ReadPreferenceString("MenuAutoStart", Txt_MenuAutoStart)
-      Txt_MenuLanguage = ReadPreferenceString("MenuLanguage", Txt_MenuLanguage)
-      Txt_MenuExit = ReadPreferenceString("MenuExit", Txt_MenuExit)
-      Txt_MenuAbout = ReadPreferenceString("MenuAbout", Txt_MenuAbout)
-      Txt_MenuLaunchMode = ReadPreferenceString("MenuLaunchMode", Txt_MenuLaunchMode)
-      Txt_LaunchApp = ReadPreferenceString("LaunchApp", Txt_LaunchApp)
-      Txt_LaunchTab = ReadPreferenceString("LaunchTab", Txt_LaunchTab)
-      Txt_LaunchWindow = ReadPreferenceString("LaunchWindow", Txt_LaunchWindow)
-      Txt_LaunchDefault = ReadPreferenceString("LaunchDefault", Txt_LaunchDefault)
-      Txt_MenuPause = ReadPreferenceString("MenuPause", Txt_MenuPause)
-      Txt_MenuProfiles = ReadPreferenceString("MenuProfiles", Txt_MenuProfiles)
-      Txt_ProfileOpen = ReadPreferenceString("ProfileOpen", Txt_ProfileOpen)
-      Txt_ProfileReload = ReadPreferenceString("ProfileReload", Txt_ProfileReload)
-      Txt_ProfileTemplate = ReadPreferenceString("ProfileTemplate", Txt_ProfileTemplate)
-      Txt_CustomAIAdd = ReadPreferenceString("CustomAIAdd", Txt_CustomAIAdd)
-      Txt_CustomAIRemove = ReadPreferenceString("CustomAIRemove", Txt_CustomAIRemove)
-      Txt_MenuEmbedded = ReadPreferenceString("MenuEmbedded", Txt_MenuEmbedded)
-      Txt_AboutTitle = ReadPreferenceString("AboutTitle", Txt_AboutTitle)
-      Txt_AboutText = AppName + VerPrefix + ReadPreferenceString("AboutText", "Developed to remap hotkeys and Copilot keys.")
-      Txt_MsgBoxRunning = ReadPreferenceString("MsgBoxRunning", Txt_MsgBoxRunning)
-      Txt_CustomAINamePrompt = ReadPreferenceString("CustomAINamePrompt", Txt_CustomAINamePrompt)
-      Txt_CustomAIURLPrompt = ReadPreferenceString("CustomAIURLPrompt", Txt_CustomAIURLPrompt)
-      Txt_CustomAINotCustomTitle = ReadPreferenceString("CustomAINotCustomTitle", Txt_CustomAINotCustomTitle)
-      Txt_CustomAINotCustomMsg = ReadPreferenceString("CustomAINotCustomMsg", Txt_CustomAINotCustomMsg)
-      Txt_RegErrorTitle = ReadPreferenceString("RegErrorTitle", Txt_RegErrorTitle)
-      Txt_RegErrorMsg = ReadPreferenceString("RegErrorMsg", Txt_RegErrorMsg)
-      Txt_ProfileReloadedTitle = ReadPreferenceString("ProfileReloadedTitle", Txt_ProfileReloadedTitle)
-      Txt_ProfileReloadedMsg = ReadPreferenceString("ProfileReloadedMsg", Txt_ProfileReloadedMsg)
-      Txt_MenuHotkey = ReadPreferenceString("MenuHotkey", Txt_MenuHotkey)
-      Txt_HotkeyConfigure = ReadPreferenceString("HotkeyConfigure", Txt_HotkeyConfigure)
-      Txt_HotkeyReset = ReadPreferenceString("HotkeyReset", Txt_HotkeyReset)
-      Txt_HotkeyCurrent = ReadPreferenceString("HotkeyCurrent", Txt_HotkeyCurrent)
-      ClosePreferences()
-    EndIf
-  EndIf
-  
-  Txt_MsgBoxTitle = AppName
-  Txt_TrayTooltip = AppName
-EndProcedure
-
-Procedure UpdateTrayTooltip()
-  Protected Tip.s
-  Tip = "AI Copilot Mapper v" + #AppVersion + Chr(10)
-  If MappingPaused
-    Tip + "Status: Paused" + Chr(10)
-  EndIf
-  Tip + "Genvej: " + TriggerKeyName + Chr(10)
-  Tip + "AI: " + SelectedAI + Chr(10)
-  Tip + "Mode: "
-  Select ButtonMode
-    Case 0 : Tip + Txt_ModeAI
-    Case 1 : Tip + Txt_ModeCTRL
-    Case 2 : Tip + Txt_ModeALT
-  EndSelect
-  If UseEmbeddedBrowser
-    Tip + Chr(10) + "Åbning: WebView2 (Embedded)"
-  Else
-    Tip + Chr(10) + "Åbning: " + LaunchModeName(LaunchMode)
-  EndIf
-  SysTrayIconToolTip(#TrayIcon, Tip)
-EndProcedure
-
-Procedure RebuildMenu()
-  Protected Index.i = 0
-  If IsMenu(#TrayMenu)
-    FreeMenu(#TrayMenu)
-  EndIf
-  
-  If CreatePopupMenu(#TrayMenu)
-    OpenSubMenu(Txt_MenuMode)
-      MenuItem(#Menu_Mode_AI, Txt_ModeAI)
-      MenuItem(#Menu_Mode_CTRL, Txt_ModeCTRL)
-      MenuItem(#Menu_Mode_ALT, Txt_ModeALT)
-    CloseSubMenu()
-    MenuBar()
-    
-    OpenSubMenu(Txt_MenuHotkey)
-      MenuItem(#Menu_Hotkey_Config, Txt_HotkeyConfigure)
-      MenuItem(#Menu_Hotkey_Reset, Txt_HotkeyReset)
-      MenuBar()
-      MenuItem(9999, Txt_HotkeyCurrent + TriggerKeyName)
-      DisableMenuItem(#TrayMenu, 9999, 1)
-    CloseSubMenu()
-    
-    OpenSubMenu(Txt_MenuAI)
-      Index = 0
-      ForEach AIServices()
-        If AIServices()\IsCustom
-          MenuItem(#Menu_AI_Base + Index, AIServices()\Name + " (Custom)")
-        Else
-          Select AIServices()\Name
-            Case "Gemini"     : MenuItem(#Menu_AI_Base + Index, "Google Gemini")
-            Case "ChatGPT"    : MenuItem(#Menu_AI_Base + Index, "OpenAI ChatGPT")
-            Case "Claude"     : MenuItem(#Menu_AI_Base + Index, "Anthropic Claude")
-            Case "Perplexity" : MenuItem(#Menu_AI_Base + Index, "Perplexity AI")
-            Case "Copilot"    : MenuItem(#Menu_AI_Base + Index, "Microsoft Copilot (Web)")
-            Default           : MenuItem(#Menu_AI_Base + Index, AIServices()\Name)
-          EndSelect
-        EndIf
-        If LCase(SelectedAI) = LCase(AIServices()\Name)
-          SetMenuItemState(#TrayMenu, #Menu_AI_Base + Index, 1)
-        EndIf
-        Index + 1
-      Next
-      MenuBar()
-      MenuItem(#Menu_CustomAI_Add, Txt_CustomAIAdd)
-      MenuItem(#Menu_CustomAI_Remove, Txt_CustomAIRemove)
-    CloseSubMenu()
-    
-    OpenSubMenu(Txt_MenuBrowser)
-      Index = 0
-      ForEach InstalledBrowsers()
-        MenuItem(#Menu_Browser_Base + Index, InstalledBrowsers()\Name)
-        If LCase(BrowserPath) = LCase(InstalledBrowsers()\Path)
-          SetMenuItemState(#TrayMenu, #Menu_Browser_Base + Index, 1)
-        EndIf
-        Index + 1
-      Next
-    CloseSubMenu()
-    
-    OpenSubMenu(Txt_MenuLaunchMode)
-      MenuItem(#Menu_Launch_App, Txt_LaunchApp)
-      MenuItem(#Menu_Launch_Tab, Txt_LaunchTab)
-      MenuItem(#Menu_Launch_Window, Txt_LaunchWindow)
-      MenuItem(#Menu_Launch_Default, Txt_LaunchDefault)
-    CloseSubMenu()
-    
-    MenuBar()
-    MenuItem(#Menu_Embedded, Txt_MenuEmbedded)
-    MenuItem(#Menu_AutoStart, Txt_MenuAutoStart)
-    MenuItem(#Menu_Pause, Txt_MenuPause)
-    
-    OpenSubMenu(Txt_MenuProfiles)
-      MenuItem(#Menu_Profile_Open, Txt_ProfileOpen)
-      MenuItem(#Menu_Profile_Reload, Txt_ProfileReload)
-      MenuItem(#Menu_Profile_Template, Txt_ProfileTemplate)
-    CloseSubMenu()
-    
-    OpenSubMenu(Txt_MenuLanguage)
-      Index = 0
-      ForEach AvailableLanguages()
-        MenuItem(#Menu_Lang_Base + Index, AvailableLanguages()\Name)
-        If UCase(Language) = UCase(AvailableLanguages()\Code)
-          SetMenuItemState(#TrayMenu, #Menu_Lang_Base + Index, 1)
-        EndIf
-        Index + 1
-      Next
-    CloseSubMenu()
-    
-    MenuBar()
-    MenuItem(#Menu_About, Txt_MenuAbout)
-    MenuItem(#Menu_Exit, Txt_MenuExit)
-    
-    SetMenuItemState(#TrayMenu, #Menu_Mode_AI, Bool(ButtonMode = 0))
-    SetMenuItemState(#TrayMenu, #Menu_Mode_CTRL, Bool(ButtonMode = 1))
-    SetMenuItemState(#TrayMenu, #Menu_Mode_ALT, Bool(ButtonMode = 2))
-    SetMenuItemState(#TrayMenu, #Menu_Launch_App, Bool(LaunchMode = 0))
-    SetMenuItemState(#TrayMenu, #Menu_Launch_Tab, Bool(LaunchMode = 1))
-    SetMenuItemState(#TrayMenu, #Menu_Launch_Window, Bool(LaunchMode = 2))
-    SetMenuItemState(#TrayMenu, #Menu_Launch_Default, Bool(LaunchMode = 3))
-    SetMenuItemState(#TrayMenu, #Menu_Embedded, UseEmbeddedBrowser) 
-    SetMenuItemState(#TrayMenu, #Menu_AutoStart, AutoStart)
-    SetMenuItemState(#TrayMenu, #Menu_Pause, MappingPaused)
-  EndIf
-  
-  UpdateTrayTooltip()
 EndProcedure
 
 ; ----------------------------------------------------------------------------
@@ -926,8 +724,334 @@ Procedure UpdateActiveProfileCache()
 EndProcedure
 
 ; ----------------------------------------------------------------------------
-; DIALOG: OPELÆS/OPTAG NY GENVEJ
+; LOCALIZATION & SYSTEM TRAY
 ; ----------------------------------------------------------------------------
+Procedure UpdateLanguageStrings()
+  Protected AppName.s = "AI Copilot Mapper"
+  Protected VerPrefix.s = " v" + #AppVersion + Chr(10)
+  Protected LngFile.s = GetPathPart(ProgramFilename()) + Language + ".lng"
+  
+  ; Fallbacks (Dansk)
+  Txt_ModeAI = "AI-genvej"
+  Txt_ModeCTRL = "Højre CTRL"
+  Txt_ModeALT = "Højre ALT"
+  Txt_MenuPause = "Pause mapping"
+  Txt_MenuAbout = "Om programmet"
+  Txt_MenuExit = "Afslut"
+  Txt_MenuSettings = "Indstillinger..."
+  Txt_MenuOpenAI = "Åbn AI View"
+  Txt_LaunchApp = "App-vindue"
+  Txt_LaunchTab = "Normal fane"
+  Txt_LaunchWindow = "Nyt vindue"
+  Txt_LaunchDefault = "Systemstandard"
+  Txt_MenuLaunchMode = "Åbningsmetode"
+  Txt_AboutTitle = "Om " + AppName
+  Txt_AboutText = AppName + VerPrefix + "Omkod Copilot-tasten eller din egen brugerdefinerede genvej til en AI eller modtast."
+  Txt_MsgBoxRunning = "Programmet kører allerede."
+  Txt_CustomAINamePrompt = "Navn på AI-tjenesten:" + Chr(10) + "Eksempel: Open WebUI"
+  Txt_CustomAIURLPrompt = "URL til AI-tjenesten:" + Chr(10) + "Eksempel: http://localhost:3000"
+  Txt_CustomAINotCustomTitle = "Custom AI"
+  Txt_CustomAINotCustomMsg = "Den valgte AI er ikke en custom AI og kan derfor ikke fjernes her."
+  Txt_RegErrorTitle = "Rettighedsfejl"
+  Txt_RegErrorMsg = "Windows nægtede adgang til Autostart."
+  Txt_ProfileReloadedTitle = "Profiler"
+  Txt_ProfileReloadedMsg = "Profiler er genindlæst."
+  
+  Txt_MenuHotkey = "Genvejstast"
+  Txt_HotkeyConfigure = "Optag ny genvej..."
+  Txt_HotkeyReset = "Nulstil til Copilot-tast"
+  Txt_HotkeyCurrent = "Aktiv genvej: "
+  Txt_HotkeyPrompt = "Tryk på den ønskede tastekombination nu..." + Chr(10) + "(F.eks. Ctrl+Alt+Mellemrum, F12, Win+Shift+A)"
+  Txt_HotkeyWaiting = "Venter på tastetryk..."
+  Txt_HotkeyCancel = "Annuller"
+  Txt_SettingsTitle = "AI Copilot Mapper - Indstillinger"
+  Txt_FrameHotkey = "Genvejstast og Funktion"
+  Txt_BtnRecord = "Optag..."
+  Txt_BtnReset = "Nulstil"
+  Txt_LabelButtonAction = "Knaphandling:"
+  Txt_FrameAI = "AI Tjeneste"
+  Txt_BtnAddCustom = "Tilføj Custom"
+  Txt_BtnRemoveSelected = "Fjern Valgt"
+  Txt_FrameBrowser = "Browser og Visning"
+  Txt_MenuEmbedded = "Brug Indbygget WebView2 (Hurtig)"
+  Txt_LabelExternalBrowser = "Ekstern browser:"
+  Txt_FrameSystem = "System og Profiler"
+  Txt_MenuAutoStart = "Start med Windows"
+  Txt_MenuLanguage = "Sprog"
+  Txt_BtnOpenProfiles = "Åbn App-profiler (.ini)"
+  Txt_BtnReloadProfiles = "Genindlæs App-profiler"
+  Txt_BtnClose = "Luk"
+  
+  ; Indlæs fra sprogfil hvis tilgængelig
+  If FileSize(LngFile) > 0
+    If OpenPreferences(LngFile, #PB_UTF8)
+      PreferenceGroup("Language")
+      Txt_ModeAI = ReadPreferenceString("ModeAI", Txt_ModeAI)
+      Txt_ModeCTRL = ReadPreferenceString("ModeCTRL", Txt_ModeCTRL)
+      Txt_ModeALT = ReadPreferenceString("ModeALT", Txt_ModeALT)
+      Txt_MenuPause = ReadPreferenceString("MenuPause", Txt_MenuPause)
+      Txt_MenuAbout = ReadPreferenceString("MenuAbout", Txt_MenuAbout)
+      Txt_MenuExit = ReadPreferenceString("MenuExit", Txt_MenuExit)
+      Txt_MenuSettings = ReadPreferenceString("MenuSettings", Txt_MenuSettings)
+      Txt_MenuOpenAI = ReadPreferenceString("MenuOpenAI", Txt_MenuOpenAI)
+      Txt_LaunchApp = ReadPreferenceString("LaunchApp", Txt_LaunchApp)
+      Txt_LaunchTab = ReadPreferenceString("LaunchTab", Txt_LaunchTab)
+      Txt_LaunchWindow = ReadPreferenceString("LaunchWindow", Txt_LaunchWindow)
+      Txt_LaunchDefault = ReadPreferenceString("LaunchDefault", Txt_LaunchDefault)
+      Txt_MenuLaunchMode = ReadPreferenceString("MenuLaunchMode", Txt_MenuLaunchMode)
+      Txt_AboutTitle = ReadPreferenceString("AboutTitle", Txt_AboutTitle)
+      Txt_AboutText = AppName + VerPrefix + ReadPreferenceString("AboutText", Txt_AboutText)
+      Txt_MsgBoxRunning = ReadPreferenceString("MsgBoxRunning", Txt_MsgBoxRunning)
+      Txt_CustomAINamePrompt = ReplaceString(ReadPreferenceString("CustomAINamePrompt", Txt_CustomAINamePrompt), "\n", Chr(10))
+      Txt_CustomAIURLPrompt = ReplaceString(ReadPreferenceString("CustomAIURLPrompt", Txt_CustomAIURLPrompt), "\n", Chr(10))
+      Txt_CustomAINotCustomTitle = ReadPreferenceString("CustomAINotCustomTitle", Txt_CustomAINotCustomTitle)
+      Txt_CustomAINotCustomMsg = ReadPreferenceString("CustomAINotCustomMsg", Txt_CustomAINotCustomMsg)
+      Txt_RegErrorTitle = ReadPreferenceString("RegErrorTitle", Txt_RegErrorTitle)
+      Txt_RegErrorMsg = ReadPreferenceString("RegErrorMsg", Txt_RegErrorMsg)
+      Txt_ProfileReloadedTitle = ReadPreferenceString("ProfileReloadedTitle", Txt_ProfileReloadedTitle)
+      Txt_ProfileReloadedMsg = ReadPreferenceString("ProfileReloadedMsg", Txt_ProfileReloadedMsg)
+      Txt_MenuHotkey = ReadPreferenceString("MenuHotkey", Txt_MenuHotkey)
+      Txt_HotkeyConfigure = ReadPreferenceString("HotkeyConfigure", Txt_HotkeyConfigure)
+      Txt_HotkeyReset = ReadPreferenceString("HotkeyReset", Txt_HotkeyReset)
+      Txt_HotkeyCurrent = ReadPreferenceString("HotkeyCurrent", Txt_HotkeyCurrent)
+      Txt_HotkeyPrompt = ReplaceString(ReadPreferenceString("HotkeyPrompt", Txt_HotkeyPrompt), "\n", Chr(10))
+      Txt_HotkeyWaiting = ReadPreferenceString("HotkeyWaiting", Txt_HotkeyWaiting)
+      Txt_HotkeyCancel = ReadPreferenceString("HotkeyCancel", Txt_HotkeyCancel)
+      Txt_SettingsTitle = ReadPreferenceString("SettingsTitle", Txt_SettingsTitle)
+      Txt_FrameHotkey = ReadPreferenceString("FrameHotkey", Txt_FrameHotkey)
+      Txt_BtnRecord = ReadPreferenceString("BtnRecord", Txt_BtnRecord)
+      Txt_BtnReset = ReadPreferenceString("BtnReset", Txt_BtnReset)
+      Txt_LabelButtonAction = ReadPreferenceString("LabelButtonAction", Txt_LabelButtonAction)
+      Txt_FrameAI = ReadPreferenceString("FrameAI", Txt_FrameAI)
+      Txt_BtnAddCustom = ReadPreferenceString("BtnAddCustom", Txt_BtnAddCustom)
+      Txt_BtnRemoveSelected = ReadPreferenceString("BtnRemoveSelected", Txt_BtnRemoveSelected)
+      Txt_FrameBrowser = ReadPreferenceString("FrameBrowser", Txt_FrameBrowser)
+      Txt_MenuEmbedded = ReadPreferenceString("MenuEmbedded", Txt_MenuEmbedded)
+      Txt_LabelExternalBrowser = ReadPreferenceString("LabelExternalBrowser", Txt_LabelExternalBrowser)
+      Txt_FrameSystem = ReadPreferenceString("FrameSystem", Txt_FrameSystem)
+      Txt_MenuAutoStart = ReadPreferenceString("MenuAutoStart", Txt_MenuAutoStart)
+      Txt_MenuLanguage = ReadPreferenceString("MenuLanguage", Txt_MenuLanguage)
+      Txt_BtnOpenProfiles = ReadPreferenceString("BtnOpenProfiles", Txt_BtnOpenProfiles)
+      Txt_BtnReloadProfiles = ReadPreferenceString("BtnReloadProfiles", Txt_BtnReloadProfiles)
+      Txt_BtnClose = ReadPreferenceString("BtnClose", Txt_BtnClose)
+      ClosePreferences()
+    EndIf
+  EndIf
+  
+  Txt_MsgBoxTitle = AppName
+  Txt_TrayTooltip = AppName
+EndProcedure
+
+Procedure UpdateTrayTooltip()
+  Protected Tip.s
+  Tip = "AI Copilot Mapper v" + #AppVersion + Chr(10)
+  If MappingPaused
+    Tip + "Status: Pauset" + Chr(10)
+  EndIf
+  Tip + Txt_HotkeyCurrent + TriggerKeyName + Chr(10)
+  Tip + "AI: " + SelectedAI + Chr(10)
+  If UseEmbeddedBrowser
+    Tip + "Visning: WebView2"
+  Else
+    Tip + "Visning: Ekstern (" + LaunchModeName(LaunchMode) + ")"
+  EndIf
+  SysTrayIconToolTip(#TrayIcon, Tip)
+EndProcedure
+
+Procedure RebuildMenu()
+  If IsMenu(#TrayMenu)
+    FreeMenu(#TrayMenu)
+  EndIf
+  
+  If CreatePopupMenu(#TrayMenu)
+    MenuItem(#Menu_Tray_OpenAI, Txt_MenuOpenAI)
+    MenuItem(#Menu_Tray_Pause, Txt_MenuPause)
+    MenuBar()
+    MenuItem(#Menu_Tray_Settings, Txt_MenuSettings)
+    MenuBar()
+    MenuItem(#Menu_Tray_About, Txt_MenuAbout)
+    MenuItem(#Menu_Tray_Exit, Txt_MenuExit)
+    
+    SetMenuItemState(#TrayMenu, #Menu_Tray_Pause, MappingPaused)
+  EndIf
+  
+  UpdateTrayTooltip()
+EndProcedure
+
+; ----------------------------------------------------------------------------
+; DIALOG: INDSTILLINGER (DEDIKERET VINDUE)
+; ----------------------------------------------------------------------------
+Procedure UpdateSettingsUI()
+  If Not IsWindow(#SettingsWin) : ProcedureReturn : EndIf
+  
+  ; Mål dynamisk bredde til knapperne i sektionen 'AI Tjeneste'
+  Protected BtnAddW.i = GetGadgetTextWidth(#Set_BtnAddAI, Txt_BtnAddCustom)
+  Protected BtnDelW.i = GetGadgetTextWidth(#Set_BtnDelAI, Txt_BtnRemoveSelected)
+  If BtnAddW < 90 : BtnAddW = 90 : EndIf
+  If BtnDelW < 90 : BtnDelW = 90 : EndIf
+  
+  ; Mål knapperne i øverste sektion (Optag/Nulstil)
+  Protected BtnRecW.i = GetGadgetTextWidth(#Set_BtnRecordKey, Txt_BtnRecord)
+  Protected BtnRstW.i = GetGadgetTextWidth(#Set_BtnResetKey, Txt_BtnReset)
+  If BtnRecW < 85 : BtnRecW = 85 : EndIf
+  If BtnRstW < 85 : BtnRstW = 85 : EndIf
+
+  ; Beregn påkrævet totalbredde for vinduet
+  ; Venstre margen (15) + Dropdown (min 200) + Spacing (10) + Knap1 + Spacing (10) + Knap2 + Højre margen (15)
+  Protected RequiredContentW.i = 200 + 10 + BtnAddW + 10 + BtnDelW
+  Protected WinW.i = RequiredContentW + 30
+  If WinW < 520 : WinW = 520 : EndIf ; Minimumsbredde af hensyn til bunden
+  
+  Protected FrameW.i = WinW - 30
+  Protected RightEdge.i = 15 + FrameW
+  
+  ; Skaler selve vinduet
+  ResizeWindow(#SettingsWin, #PB_Ignore, #PB_Ignore, WinW, #PB_Ignore)
+  SetWindowTitle(#SettingsWin, Txt_SettingsTitle)
+  
+  ; 1. Genvej & Tastfunktion
+  ResizeGadget(#Set_FrameKey, 15, 10, FrameW, 95)
+  SetGadgetText(#Set_FrameKey, Txt_FrameHotkey)
+  SetGadgetText(#Set_KeyLabel, Txt_HotkeyCurrent + TriggerKeyName)
+  ResizeGadget(#Set_BtnResetKey, RightEdge - 15 - BtnRstW, 28, BtnRstW, 25)
+  SetGadgetText(#Set_BtnResetKey, Txt_BtnReset)
+  ResizeGadget(#Set_BtnRecordKey, RightEdge - 25 - BtnRstW - BtnRecW, 28, BtnRecW, 25)
+  SetGadgetText(#Set_BtnRecordKey, Txt_BtnRecord)
+  ResizeGadget(#Set_KeyLabel, 30, 32, RightEdge - 35 - BtnRstW - BtnRecW - 30, 20)
+  
+  SetGadgetText(#Set_LabelBtnAction, Txt_LabelButtonAction)
+  ResizeGadget(#Set_ComboMode, 150, 65, FrameW - 145, 25)
+  ClearGadgetItems(#Set_ComboMode)
+  AddGadgetItem(#Set_ComboMode, -1, Txt_ModeAI)
+  AddGadgetItem(#Set_ComboMode, -1, Txt_ModeCTRL)
+  AddGadgetItem(#Set_ComboMode, -1, Txt_ModeALT)
+  SetGadgetState(#Set_ComboMode, ButtonMode)
+  
+  ; 2. AI Tjeneste (Dynamisk tilpasning af knapper og dropdown)
+  ResizeGadget(#Set_FrameAI, 15, 115, FrameW, 75)
+  SetGadgetText(#Set_FrameAI, Txt_FrameAI)
+  
+  Protected DelX.i = RightEdge - 15 - BtnDelW
+  Protected AddX.i = DelX - 10 - BtnAddW
+  Protected ComboAIW.i = AddX - 10 - 30
+  
+  ResizeGadget(#Set_ComboAI, 30, 142, ComboAIW, 25)
+  PopulateAICombo(#Set_ComboAI)
+  
+  ResizeGadget(#Set_BtnAddAI, AddX, 142, BtnAddW, 25)
+  SetGadgetText(#Set_BtnAddAI, Txt_BtnAddCustom)
+  
+  ResizeGadget(#Set_BtnDelAI, DelX, 142, BtnDelW, 25)
+  SetGadgetText(#Set_BtnDelAI, Txt_BtnRemoveSelected)
+  
+  ; 3. Browser Integration
+  ResizeGadget(#Set_FrameBrowser, 15, 200, FrameW, 115)
+  SetGadgetText(#Set_FrameBrowser, Txt_FrameBrowser)
+  ResizeGadget(#Set_ChkEmbedded, 30, 222, FrameW - 30, 20)
+  SetGadgetText(#Set_ChkEmbedded, Txt_MenuEmbedded)
+  SetGadgetState(#Set_ChkEmbedded, UseEmbeddedBrowser)
+  
+  SetGadgetText(#Set_LabelBrowser, Txt_LabelExternalBrowser)
+  ResizeGadget(#Set_ComboBrowser, 150, 248, FrameW - 145, 25)
+  
+  SetGadgetText(#Set_LabelLaunchMode, Txt_MenuLaunchMode + ":")
+  ResizeGadget(#Set_ComboLaunchMode, 150, 278, FrameW - 145, 25)
+  
+  DisableGadget(#Set_ComboBrowser, UseEmbeddedBrowser)
+  DisableGadget(#Set_ComboLaunchMode, UseEmbeddedBrowser)
+  
+  Protected i.i, bIdx.i = 0
+  ClearGadgetItems(#Set_ComboBrowser)
+  ForEach InstalledBrowsers()
+    AddGadgetItem(#Set_ComboBrowser, -1, InstalledBrowsers()\Name)
+    If LCase(BrowserPath) = LCase(InstalledBrowsers()\Path)
+      bIdx = ListIndex(InstalledBrowsers())
+    EndIf
+  Next
+  SetGadgetState(#Set_ComboBrowser, bIdx)
+  
+  ClearGadgetItems(#Set_ComboLaunchMode)
+  AddGadgetItem(#Set_ComboLaunchMode, -1, Txt_LaunchApp)
+  AddGadgetItem(#Set_ComboLaunchMode, -1, Txt_LaunchTab)
+  AddGadgetItem(#Set_ComboLaunchMode, -1, Txt_LaunchWindow)
+  AddGadgetItem(#Set_ComboLaunchMode, -1, Txt_LaunchDefault)
+  SetGadgetState(#Set_ComboLaunchMode, LaunchMode)
+  
+  ; 4. System & Profiler
+  ResizeGadget(#Set_FrameSystem, 15, 325, FrameW, 105)
+  SetGadgetText(#Set_FrameSystem, Txt_FrameSystem)
+  SetGadgetText(#Set_ChkAutoStart, Txt_MenuAutoStart)
+  SetGadgetState(#Set_ChkAutoStart, AutoStart)
+  
+  ResizeGadget(#Set_LabelLang, 240, 350, 60, 20)
+  SetGadgetText(#Set_LabelLang, Txt_MenuLanguage + ":")
+  ResizeGadget(#Set_ComboLang, 305, 346, FrameW - 300, 25)
+  
+  ClearGadgetItems(#Set_ComboLang)
+  Protected lIdx.i = 0
+  ForEach AvailableLanguages()
+    AddGadgetItem(#Set_ComboLang, -1, AvailableLanguages()\Name)
+    If UCase(Language) = UCase(AvailableLanguages()\Code)
+      lIdx = ListIndex(AvailableLanguages())
+    EndIf
+  Next
+  SetGadgetState(#Set_ComboLang, lIdx)
+  
+  Protected HalfBtnW.i = (FrameW - 35) / 2
+  ResizeGadget(#Set_BtnOpenProfiles, 30, 385, HalfBtnW, 26)
+  SetGadgetText(#Set_BtnOpenProfiles, Txt_BtnOpenProfiles)
+  ResizeGadget(#Set_BtnReloadProfiles, 30 + HalfBtnW + 15, 385, HalfBtnW, 26)
+  SetGadgetText(#Set_BtnReloadProfiles, Txt_BtnReloadProfiles)
+  
+  ; Luk-knap centreres
+  ResizeGadget(#Set_BtnSaveClose, (WinW / 2) - 60, 440, 120, 30)
+  SetGadgetText(#Set_BtnSaveClose, Txt_BtnClose)
+EndProcedure
+
+Procedure OpenSettingsWindow()
+  If IsWindow(#SettingsWin)
+    SetActiveWindow(#SettingsWin)
+    ProcedureReturn
+  EndIf
+  
+  If OpenWindow(#SettingsWin, #PB_Ignore, #PB_Ignore, 520, 485, Txt_SettingsTitle, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+    FrameGadget(#Set_FrameKey, 15, 10, 490, 95, "")
+    TextGadget(#Set_KeyLabel, 30, 32, 220, 20, "")
+    ButtonGadget(#Set_BtnRecordKey, 310, 28, 85, 25, "")
+    ButtonGadget(#Set_BtnResetKey, 405, 28, 85, 25, "")
+    
+    TextGadget(#Set_LabelBtnAction, 30, 68, 120, 20, "")
+    ComboBoxGadget(#Set_ComboMode, 150, 65, 345, 25)
+    
+    FrameGadget(#Set_FrameAI, 15, 115, 490, 75, "")
+    ComboBoxGadget(#Set_ComboAI, 30, 142, 230, 25)
+    ButtonGadget(#Set_BtnAddAI, 270, 142, 105, 25, "")
+    ButtonGadget(#Set_BtnDelAI, 385, 142, 105, 25, "")
+    
+    FrameGadget(#Set_FrameBrowser, 15, 200, 490, 115, "")
+    CheckBoxGadget(#Set_ChkEmbedded, 30, 222, 450, 20, "")
+    
+    TextGadget(#Set_LabelBrowser, 30, 252, 110, 20, "")
+    ComboBoxGadget(#Set_ComboBrowser, 150, 248, 345, 25)
+    
+    TextGadget(#Set_LabelLaunchMode, 30, 282, 110, 20, "")
+    ComboBoxGadget(#Set_ComboLaunchMode, 150, 278, 345, 25)
+    
+    FrameGadget(#Set_FrameSystem, 15, 325, 490, 105, "")
+    CheckBoxGadget(#Set_ChkAutoStart, 30, 348, 190, 20, "")
+    
+    TextGadget(#Set_LabelLang, 240, 350, 60, 20, "")
+    ComboBoxGadget(#Set_ComboLang, 305, 346, 190, 25)
+    
+    ButtonGadget(#Set_BtnOpenProfiles, 30, 385, 220, 26, "")
+    ButtonGadget(#Set_BtnReloadProfiles, 265, 385, 220, 26, "")
+    
+    ButtonGadget(#Set_BtnSaveClose, 200, 440, 120, 30, "")
+    
+    UpdateSettingsUI()
+  EndIf
+EndProcedure
+
 Procedure OpenHotkeyRecorder()
   If IsWindow(#HotkeyWin)
     SetActiveWindow(#HotkeyWin)
@@ -939,12 +1063,40 @@ Procedure OpenHotkeyRecorder()
   RecordedModifiers = 0
   RecordedKeyName = ""
   
-  If OpenWindow(#HotkeyWin, #PB_Ignore, #PB_Ignore, 360, 140, "Indstil Genvejstast", #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
+  If OpenWindow(#HotkeyWin, #PB_Ignore, #PB_Ignore, 360, 140, Txt_MenuHotkey, #PB_Window_SystemMenu | #PB_Window_ScreenCentered)
     StickyWindow(#HotkeyWin, 1)
-    TextGadget(#Hotkey_TextPrompt, 20, 20, 320, 35, "Tryk på den ønskede tastekombination nu..." + Chr(10) + "(F.eks. Ctrl+Alt+Mellemrum, F12, Win+Shift+A)")
-    TextGadget(#Hotkey_TextStatus, 20, 65, 320, 25, "Venter på tastetryk...", #PB_Text_Center)
-    ButtonGadget(#Hotkey_BtnCancel, 130, 95, 100, 30, "Annuller")
+    TextGadget(#Hotkey_TextPrompt, 20, 15, 320, 40, Txt_HotkeyPrompt)
+    TextGadget(#Hotkey_TextStatus, 20, 65, 320, 25, Txt_HotkeyWaiting, #PB_Text_Center)
+    ButtonGadget(#Hotkey_BtnCancel, 130, 95, 100, 30, Txt_HotkeyCancel)
   EndIf
+EndProcedure
+
+Procedure AddOrEditCustomAI()
+  Protected Name.s, URL.s
+  Name = InputRequester("Custom AI", Txt_CustomAINamePrompt, "")
+  If Trim(Name) = "" : ProcedureReturn : EndIf
+  URL = InputRequester("Custom AI", Txt_CustomAIURLPrompt, "http://localhost:3000")
+  URL = NormalizeURL(URL)
+  If Trim(URL) = "" : ProcedureReturn : EndIf
+  AddAIService(Name, URL, 1)
+  SelectedAI = Trim(Name)
+  UpdateTargetURL()
+  SaveCustomAIServices()
+  UpdateSettingsUI()
+EndProcedure
+
+Procedure RemoveSelectedCustomAI()
+  ForEach AIServices()
+    If LCase(AIServices()\Name) = LCase(SelectedAI) And AIServices()\IsCustom
+      DeleteElement(AIServices())
+      SelectedAI = "Gemini"
+      UpdateTargetURL()
+      SaveCustomAIServices()
+      UpdateSettingsUI()
+      ProcedureReturn
+    EndIf
+  Next
+  MessageRequester(Txt_CustomAINotCustomTitle, Txt_CustomAINotCustomMsg, #PB_MessageRequester_Info)
 EndProcedure
 
 ; ----------------------------------------------------------------------------
@@ -966,20 +1118,14 @@ Procedure.l KeyboardProc(nCode, wParam, lParam)
   Protected VKey.w
   Protected CurMods.i
   
-  If nCode < 0
-    ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam)
-  EndIf
-  If *pkbdll\flags & $10
-    ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam)
-  EndIf
+  If nCode < 0 : ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam) : EndIf
+  If *pkbdll\flags & $10 : ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam) : EndIf
 
-  ; Modus: Optag ny brugerdefineret tast
   If RecordDlgOpen
     If wParam = #WM_KEYDOWN Or wParam = #WM_SYSKEYDOWN
       Select *pkbdll\vkCode
         Case #VK_LCONTROL, #VK_RCONTROL, #VK_CONTROL, #VK_LMENU, #VK_RMENU, #VK_MENU,
              #VK_LSHIFT, #VK_RSHIFT, #VK_SHIFT, #VK_LWIN, #VK_RWIN
-          ; Ignorer standalone modifiers indtil hovedtasten rammes
         Default
           RecordedVK = *pkbdll\vkCode
           RecordedModifiers = CheckActiveModifiers()
@@ -991,11 +1137,8 @@ Procedure.l KeyboardProc(nCode, wParam, lParam)
     ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam)
   EndIf
 
-  ; Tjek om tastetryk matcher den aktive udløsertast
   If *pkbdll\vkCode = TriggerVK
     CurMods = CheckActiveModifiers()
-    
-    ; Hvis tasten har modifiers, skal de matche
     If TriggerModifiers <> 0 And CurMods <> TriggerModifiers
       ProcedureReturn CallNextHookEx_(hHook, nCode, wParam, lParam)
     EndIf
@@ -1011,18 +1154,9 @@ Procedure.l KeyboardProc(nCode, wParam, lParam)
       ElseIf CachedProfilePaused = 0 And MappingPaused = 0
         EffPaused = 0
       EndIf
-      
-      If CachedProfileMode >= 0 And CachedProfileMode <= 2
-        EffMode = CachedProfileMode
-      EndIf
-      
-      If CachedProfileLaunchMode >= 0 And CachedProfileLaunchMode <= 3
-        EffLaunchMode = CachedProfileLaunchMode
-      EndIf
-      
-      If CachedProfileAIURL <> ""
-        EffURL = CachedProfileAIURL
-      EndIf
+      If CachedProfileMode >= 0 And CachedProfileMode <= 2 : EffMode = CachedProfileMode : EndIf
+      If CachedProfileLaunchMode >= 0 And CachedProfileLaunchMode <= 3 : EffLaunchMode = CachedProfileLaunchMode : EndIf
+      If CachedProfileAIURL <> "" : EffURL = CachedProfileAIURL : EndIf
     EndIf
     
     If EffPaused
@@ -1033,29 +1167,20 @@ Procedure.l KeyboardProc(nCode, wParam, lParam)
     If wParam = #WM_KEYDOWN Or wParam = #WM_SYSKEYDOWN
       If CopilotKeyDown = 0
         CopilotKeyDown = 1
-        
         Select EffMode
           Case 0 
             PendingLaunchURL = EffURL
             PendingLaunchMode = EffLaunchMode
             PostEvent(#Event_OpenCopilot)
-            
           Case 1, 2 
             If EffMode = 1 : VKey = #VK_RCONTROL : Else : VKey = #VK_RMENU : EndIf
             ActiveRemapVKey = VKey
-            
-            If GetAsyncKeyState_(#VK_LSHIFT) & $8000
-              SendKeyInput(#VK_LSHIFT, #KEYEVENTF_KEYUP)
-            EndIf
-            If GetAsyncKeyState_(#VK_LWIN) & $8000
-              SendKeyInput(#VK_LWIN, #KEYEVENTF_KEYUP)
-            EndIf
-            
+            If GetAsyncKeyState_(#VK_LSHIFT) & $8000 : SendKeyInput(#VK_LSHIFT, #KEYEVENTF_KEYUP) : EndIf
+            If GetAsyncKeyState_(#VK_LWIN) & $8000 : SendKeyInput(#VK_LWIN, #KEYEVENTF_KEYUP) : EndIf
             SendKeyInput(VKey, 0)
         EndSelect
       EndIf
       ProcedureReturn 1
-      
     ElseIf wParam = #WM_KEYUP Or wParam = #WM_SYSKEYUP
       If ActiveRemapVKey <> 0
         SendKeyInput(ActiveRemapVKey, #KEYEVENTF_KEYUP)
@@ -1108,44 +1233,129 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
       Case #Event_OpenCopilot
         LaunchTarget(PendingLaunchURL, PendingLaunchMode)
         
-      ; Udløst når brugeren har trykket en gyldig tastekombination i optageren
       Case #Event_HotkeyCaptured
         TriggerVK = RecordedVK
         TriggerModifiers = RecordedModifiers
         TriggerKeyName = RecordedKeyName
         RecordDlgOpen = 0
-        If IsWindow(#HotkeyWin)
-          CloseWindow(#HotkeyWin)
-        EndIf
+        If IsWindow(#HotkeyWin) : CloseWindow(#HotkeyWin) : EndIf
         SaveSettings()
-        RebuildMenu()
-        MessageRequester("Genvej opdateret", "Ny genvej aktiveret: " + TriggerKeyName, #PB_MessageRequester_Info)
+        UpdateTrayTooltip()
+        UpdateSettingsUI()
         
       Case #PB_Event_Gadget
-        If EventGadget() = #AICombo
-          Define SelectedIdx.i = GetGadgetState(#AICombo)
-          If SelectedIdx >= 0
-            SelectElement(AIServices(), SelectedIdx)
-            SelectedAI = AIServices()\Name
-            UpdateTargetURL()
-            SetGadgetText(#AIGadget, TargetURL)
+        Select EventGadget()
+          Case #AICombo
+            Define sIdx.i = GetGadgetState(#AICombo)
+            If sIdx >= 0
+              SelectElement(AIServices(), sIdx)
+              SelectedAI = AIServices()\Name
+              UpdateTargetURL()
+              SetGadgetText(#AIGadget, TargetURL)
+              SaveSettings()
+              UpdateTrayTooltip()
+            EndIf
+            
+          Case #Set_BtnRecordKey
+            OpenHotkeyRecorder()
+            
+          Case #Set_BtnResetKey
+            TriggerVK = $86
+            TriggerModifiers = 0
+            TriggerKeyName = "Copilot-tast"
             SaveSettings()
-            RebuildMenu()
-          EndIf
-        ElseIf EventGadget() = #Hotkey_BtnCancel
-          RecordDlgOpen = 0
-          If IsWindow(#HotkeyWin) : CloseWindow(#HotkeyWin) : EndIf
-        EndIf
+            UpdateTrayTooltip()
+            UpdateSettingsUI()
+            
+          Case #Set_ComboMode
+            ButtonMode = GetGadgetState(#Set_ComboMode)
+            SaveSettings()
+            UpdateTrayTooltip()
+            
+          Case #Set_ComboAI
+            sIdx = GetGadgetState(#Set_ComboAI)
+            If sIdx >= 0
+              SelectElement(AIServices(), sIdx)
+              SelectedAI = AIServices()\Name
+              UpdateTargetURL()
+              SaveSettings()
+              UpdateTrayTooltip()
+            EndIf
+            
+          Case #Set_BtnAddAI
+            AddOrEditCustomAI()
+            
+          Case #Set_BtnDelAI
+            RemoveSelectedCustomAI()
+            
+          Case #Set_ChkEmbedded
+            UseEmbeddedBrowser = GetGadgetState(#Set_ChkEmbedded)
+            DisableGadget(#Set_ComboBrowser, UseEmbeddedBrowser)
+            DisableGadget(#Set_ComboLaunchMode, UseEmbeddedBrowser)
+            SaveSettings()
+            UpdateTrayTooltip()
+            
+          Case #Set_ComboBrowser
+            sIdx = GetGadgetState(#Set_ComboBrowser)
+            If sIdx >= 0
+              SelectElement(InstalledBrowsers(), sIdx)
+              BrowserPath = InstalledBrowsers()\Path
+              SaveSettings()
+            EndIf
+            
+          Case #Set_ComboLaunchMode
+            LaunchMode = GetGadgetState(#Set_ComboLaunchMode)
+            SaveSettings()
+            UpdateTrayTooltip()
+            
+          Case #Set_ChkAutoStart
+            Define NewAutoStart.i = GetGadgetState(#Set_ChkAutoStart)
+            If SetAutoStartRegistry(NewAutoStart)
+              AutoStart = NewAutoStart
+              SaveSettings()
+            Else
+              SetGadgetState(#Set_ChkAutoStart, AutoStart)
+            EndIf
+            
+          Case #Set_ComboLang
+            sIdx = GetGadgetState(#Set_ComboLang)
+            If sIdx >= 0
+              SelectElement(AvailableLanguages(), sIdx)
+              Language = AvailableLanguages()\Code
+              UpdateLanguageStrings()
+              SaveSettings()
+              RebuildMenu()
+              UpdateSettingsUI()
+            EndIf
+            
+          Case #Set_BtnOpenProfiles
+            OpenProfileFile()
+            
+          Case #Set_BtnReloadProfiles
+            LoadAppProfiles()
+            UpdateActiveProfileCache()
+            MessageRequester(Txt_ProfileReloadedTitle, Txt_ProfileReloadedMsg, #PB_MessageRequester_Info)
+            
+          Case #Set_BtnSaveClose
+            CloseWindow(#SettingsWin)
+            
+          Case #Hotkey_BtnCancel
+            RecordDlgOpen = 0
+            If IsWindow(#HotkeyWin) : CloseWindow(#HotkeyWin) : EndIf
+        EndSelect
         
       Case #PB_Event_CloseWindow
-        If EventWindow() = #AIWin
-          CloseWindow(#AIWin)
-        ElseIf EventWindow() = #HotkeyWin
-          RecordDlgOpen = 0
-          CloseWindow(#HotkeyWin)
-        Else
-          Break
-        EndIf
+        Select EventWindow()
+          Case #AIWin
+            CloseWindow(#AIWin)
+          Case #HotkeyWin
+            RecordDlgOpen = 0
+            CloseWindow(#HotkeyWin)
+          Case #SettingsWin
+            CloseWindow(#SettingsWin)
+          Case #MainWin
+            Break
+        EndSelect
 
       Case #PB_Event_SysTray
         If EventType() = #PB_EventType_RightClick Or EventType() = #PB_EventType_LeftClick
@@ -1158,85 +1368,28 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
         EndIf
         
       Case #PB_Event_Menu
-        Define MenuID.i = EventMenu()
-        
-        If MenuID >= #Menu_Browser_Base And MenuID < #Menu_Browser_Base + ListSize(InstalledBrowsers())
-          SelectElement(InstalledBrowsers(), MenuID - #Menu_Browser_Base)
-          BrowserPath = InstalledBrowsers()\Path : SaveSettings() : RebuildMenu()
-          
-        ElseIf MenuID >= #Menu_Lang_Base And MenuID < #Menu_Lang_Base + ListSize(AvailableLanguages())
-          SelectElement(AvailableLanguages(), MenuID - #Menu_Lang_Base)
-          Language = AvailableLanguages()\Code
-          UpdateLanguageStrings() : SaveSettings() : RebuildMenu()
-          
-        ElseIf MenuID >= #Menu_AI_Base And MenuID < #Menu_AI_Base + ListSize(AIServices())
-          SelectElement(AIServices(), MenuID - #Menu_AI_Base)
-          SelectedAI = AIServices()\Name
-          UpdateTargetURL() : SaveSettings() : RebuildMenu()
-          
-        Else
-          Select MenuID
-            Case #Menu_Mode_AI    : ButtonMode = 0 : SaveSettings() : RebuildMenu()
-            Case #Menu_Mode_CTRL  : ButtonMode = 1 : SaveSettings() : RebuildMenu()
-            Case #Menu_Mode_ALT   : ButtonMode = 2 : SaveSettings() : RebuildMenu()
+        Select EventMenu()
+          Case #Menu_Tray_OpenAI
+            LaunchTarget(TargetURL, LaunchMode)
             
-            Case #Menu_Hotkey_Config
-              OpenHotkeyRecorder()
-              
-            Case #Menu_Hotkey_Reset
-              TriggerVK = $86
-              TriggerModifiers = 0
-              TriggerKeyName = "Copilot-tast"
-              SaveSettings()
-              RebuildMenu()
-              MessageRequester("Genvej nulstillet", "Genvejen er sat tilbage til standard Copilot-tasten.", #PB_MessageRequester_Info)
+          Case #Menu_Tray_Pause
+            MappingPaused = 1 - MappingPaused
+            CopilotKeyDown = 0
+            If ActiveRemapVKey <> 0
+              SendKeyInput(ActiveRemapVKey, #KEYEVENTF_KEYUP)
+              ActiveRemapVKey = 0
+            EndIf
+            RebuildMenu()
             
-            Case #Menu_Launch_App     : LaunchMode = 0 : SaveSettings() : RebuildMenu()
-            Case #Menu_Launch_Tab     : LaunchMode = 1 : SaveSettings() : RebuildMenu()
-            Case #Menu_Launch_Window  : LaunchMode = 2 : SaveSettings() : RebuildMenu()
-            Case #Menu_Launch_Default : LaunchMode = 3 : SaveSettings() : RebuildMenu()
+          Case #Menu_Tray_Settings
+            OpenSettingsWindow()
             
-            Case #Menu_Embedded
-              UseEmbeddedBrowser = 1 - UseEmbeddedBrowser
-              SaveSettings() : RebuildMenu()
-
-            Case #Menu_CustomAI_Add
-              AddOrEditCustomAI()
-              SaveSettings() : RebuildMenu()
-              
-            Case #Menu_CustomAI_Remove
-              RemoveSelectedCustomAI()
-              SaveSettings() : RebuildMenu()
-
-            Case #Menu_AutoStart
-              Define NewAutoStart.i = 1 - AutoStart
-              If SetAutoStartRegistry(NewAutoStart)
-                AutoStart = NewAutoStart
-                SaveSettings()
-              EndIf
-              RebuildMenu()
-              
-            Case #Menu_Pause
-              MappingPaused = 1 - MappingPaused
-              CopilotKeyDown = 0
-              If ActiveRemapVKey <> 0
-                SendKeyInput(ActiveRemapVKey, #KEYEVENTF_KEYUP)
-                ActiveRemapVKey = 0
-              EndIf
-              RebuildMenu()
-              
-            Case #Menu_Profile_Open     : OpenProfileFile()
-            Case #Menu_Profile_Reload
-              LoadAppProfiles()
-              UpdateActiveProfileCache()
-              MessageRequester(Txt_ProfileReloadedTitle, Txt_ProfileReloadedMsg, #PB_MessageRequester_Info)
-              RebuildMenu()
-              
-            Case #Menu_Profile_Template : CreateProfileTemplate(1) : OpenProfileFile()
-            Case #Menu_About            : MessageRequester(Txt_AboutTitle, Txt_AboutText, #PB_MessageRequester_Info)
-            Case #Menu_Exit             : Break
-          EndSelect
-        EndIf
+          Case #Menu_Tray_About
+            MessageRequester(Txt_AboutTitle, Txt_AboutText, #PB_MessageRequester_Info)
+            
+          Case #Menu_Tray_Exit
+            Break
+        EndSelect
     EndSelect
   ForEver
 
@@ -1245,6 +1398,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   ; --------------------------------------------------------------------------
   RemoveWindowTimer(#MainWin, #ProfileCacheTimerID)
   If IsWindow(#AIWin) : CloseWindow(#AIWin) : EndIf
+  If IsWindow(#SettingsWin) : CloseWindow(#SettingsWin) : EndIf
   If IsWindow(#HotkeyWin) : CloseWindow(#HotkeyWin) : EndIf
   If ActiveRemapVKey <> 0 : SendKeyInput(ActiveRemapVKey, #KEYEVENTF_KEYUP) : EndIf
   If hHook : UnhookWindowsHookEx_(hHook) : EndIf
@@ -1258,8 +1412,9 @@ DataSection
   AppIconEnd:
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 40
-; Folding = ------
+; CursorPosition = 918
+; FirstLine = 886
+; Folding = -------
 ; EnableXP
 ; DPIAware
 ; UseIcon = aicopilotmapper.ico
