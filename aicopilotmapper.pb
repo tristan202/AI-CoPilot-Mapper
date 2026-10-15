@@ -17,7 +17,8 @@ EndImport
 
 ; --- CONSTANTS ---
 #AppName    = "AI Copilot Mapper"
-#AppVersion = "1.6.1"
+#AppVersion = "1.6.2"
+#GitHubURL  = "https://github.com/tristan202/AI-CoPilot-Mapper"
 
 #HOTKEY_MOD_ALT   = $01
 #HOTKEY_MOD_CTRL  = $02
@@ -142,10 +143,12 @@ Enumeration
   #About_ImageGadget
   #About_LinkGadget
   #About_TextGadget
+  #About_TitleText
   #About_CloseBtn
   #MainWin
   #AIWin
   #AICombo
+  #AIAboutBtn
   #AIGadget
 
   ; Settings Window & Gadgets
@@ -533,6 +536,29 @@ Procedure.i GetGadgetTextWidth(GadgetID.i, Text.s)
   ProcedureReturn Width
 EndProcedure
 
+; Height needed to show word-wrapped text in a gadget of the given width
+Procedure.i GetGadgetTextHeight(GadgetID.i, Text.s, Width.i)
+  Protected hDC.i, Rect.RECT, Font.i, OldFont.i, Height.i = 20
+
+  If IsGadget(GadgetID)
+    hDC = GetDC_(GadgetID(GadgetID))
+    If hDC
+      Font = SendMessage_(GadgetID(GadgetID), #WM_GETFONT, 0, 0)
+      If Font : OldFont = SelectObject_(hDC, Font) : EndIf
+
+      Rect\right = DesktopScaledX(Width)
+      If DrawText_(hDC, Text, -1, @Rect, #DT_CALCRECT | #DT_WORDBREAK | #DT_NOPREFIX)
+        Height = DesktopUnscaledY(Rect\bottom - Rect\top)
+      EndIf
+
+      If OldFont : SelectObject_(hDC, OldFont) : EndIf
+      ReleaseDC_(GadgetID(GadgetID), hDC)
+    EndIf
+  EndIf
+
+  ProcedureReturn Height
+EndProcedure
+
 ; ----------------------------------------------------------------------------
 ; CORE LOGIC: WINDOW & BROWSER LAUNCHERS
 ; ----------------------------------------------------------------------------
@@ -550,6 +576,22 @@ Procedure PopulateAICombo(ComboGadgetID.i)
   Next
 EndProcedure
 
+Procedure.s AIWindowTitle()
+  ProcedureReturn T("AIWindowTitle") + " v" + #AppVersion
+EndProcedure
+
+; Keeps the About button right-aligned in the top row and the WebView filling the rest
+Procedure LayoutAIWindow()
+  Protected BtnW.i
+  If Not IsWindow(#AIWin) : ProcedureReturn : EndIf
+  BtnW = GetGadgetTextWidth(#AIAboutBtn, T("MenuAbout"))
+  If BtnW < 80 : BtnW = 80 : EndIf
+  ResizeGadget(#AIAboutBtn, WindowWidth(#AIWin) - BtnW - 10, 5, BtnW, 25)
+  If IsGadget(#AIGadget)
+    ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
+  EndIf
+EndProcedure
+
 Procedure OpenEmbeddedAI(URL.s)
   URL = NormalizeURL(URL)
   If URL = "" : ProcedureReturn : EndIf
@@ -564,16 +606,56 @@ Procedure OpenEmbeddedAI(URL.s)
     ProcedureReturn
   EndIf
 
-  If OpenWindow(#AIWin, #PB_Ignore, #PB_Ignore, 1024, 768, T("AIWindowTitle"), #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MaximizeGadget)
+  If OpenWindow(#AIWin, #PB_Ignore, #PB_Ignore, 1024, 768, AIWindowTitle(), #PB_Window_SystemMenu | #PB_Window_ScreenCentered | #PB_Window_SizeGadget | #PB_Window_MaximizeGadget)
     StickyWindow(#AIWin, 1)
     SetActiveWindow(#AIWin)
     StickyWindow(#AIWin, 0)
     ComboBoxGadget(#AICombo, 10, 5, 250, 25)
     PopulateAICombo(#AICombo)
+    ButtonGadget(#AIAboutBtn, 0, 5, 80, 25, T("MenuAbout"))
     If WebViewGadget(#AIGadget, 0, 35, 1024, 768 - 35)
       SetGadgetText(#AIGadget, URL)
-      ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
     EndIf
+    LayoutAIWindow()
+  EndIf
+EndProcedure
+
+Procedure OpenAboutWindow()
+  Static TitleFont.i
+  Protected ParentID.i, TextH.i, LinkY.i, BtnY.i, CenterFlag.i = #PB_Window_ScreenCentered
+
+  If IsWindow(#AboutWin)
+    SetActiveWindow(#AboutWin)
+    ProcedureReturn
+  EndIf
+
+  ; Owned by the AI window when it is open, so it stays in front of it
+  If IsWindow(#AIWin)
+    ParentID = WindowID(#AIWin)
+    CenterFlag = #PB_Window_WindowCentered
+  EndIf
+
+  ; Opened hidden so it can be sized to fit the description before it is shown
+  If OpenWindow(#AboutWin, 0, 0, 400, 245, T("AboutTitle"), #PB_Window_SystemMenu | #PB_Window_Invisible, ParentID)
+    If TitleFont = 0 : TitleFont = LoadFont(#PB_Any, "Segoe UI", 12, #PB_Font_Bold) : EndIf
+
+    ImageGadget(#About_ImageGadget, 20, 20, 48, 48, ImageID(#AppIcon))
+    TextGadget(#About_TitleText, 85, 20, 295, 26, #AppName + " v" + #AppVersion)
+    If TitleFont : SetGadgetFont(#About_TitleText, FontID(TitleFont)) : EndIf
+
+    TextGadget(#About_TextGadget, 85, 52, 295, 20, T("AboutText"))
+    TextH = GetGadgetTextHeight(#About_TextGadget, T("AboutText"), 295)
+    ResizeGadget(#About_TextGadget, #PB_Ignore, #PB_Ignore, #PB_Ignore, TextH)
+
+    LinkY = 52 + TextH + 12
+    If LinkY < 80 : LinkY = 80 : EndIf
+    HyperLinkGadget(#About_LinkGadget, 85, LinkY, 295, 20, #GitHubURL, RGB(0, 102, 204), #PB_HyperLink_Underline)
+
+    BtnY = LinkY + 38
+    ButtonGadget(#About_CloseBtn, 140, BtnY, 120, 30, T("BtnClose"))
+
+    ResizeWindow(#AboutWin, #PB_Ignore, #PB_Ignore, #PB_Ignore, BtnY + 45)
+    HideWindow(#AboutWin, 0, CenterFlag)
   EndIf
 EndProcedure
 
@@ -1241,7 +1323,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
     Define sIdx.i
 
     If Event = #PB_Event_SizeWindow And EventWindow() = #AIWin
-      ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
+      LayoutAIWindow()
     EndIf
 
     Select Event
@@ -1342,7 +1424,12 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
               SaveSettings()
               RebuildMenu()
               UpdateSettingsUI()
-              If IsWindow(#AIWin) : SetWindowTitle(#AIWin, T("AIWindowTitle")) : EndIf
+              If IsWindow(#AIWin)
+                SetWindowTitle(#AIWin, AIWindowTitle())
+                SetGadgetText(#AIAboutBtn, T("MenuAbout"))
+                LayoutAIWindow()
+              EndIf
+              If IsWindow(#AboutWin) : CloseWindow(#AboutWin) : EndIf
             EndIf
 
           Case #Set_BtnOpenProfiles
@@ -1358,6 +1445,15 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
 
           Case #Hotkey_BtnCancel
             CloseHotkeyRecorder()
+
+          Case #AIAboutBtn
+            OpenAboutWindow()
+
+          Case #About_LinkGadget
+            RunProgram(#GitHubURL, "", "")
+
+          Case #About_CloseBtn
+            CloseWindow(#AboutWin)
         EndSelect
 
       Case #PB_Event_CloseWindow
@@ -1366,6 +1462,8 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
             CloseWindow(#AIWin)
           Case #HotkeyWin
             CloseHotkeyRecorder()
+          Case #AboutWin
+            CloseWindow(#AboutWin)
           Case #SettingsWin
             CloseWindow(#SettingsWin)
           Case #MainWin
@@ -1397,7 +1495,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
             OpenSettingsWindow()
 
           Case #Menu_Tray_About
-            MessageRequester(T("AboutTitle"), #AppName + " v" + #AppVersion + #LF$ + T("AboutText"), #PB_MessageRequester_Info)
+            OpenAboutWindow()
 
           Case #Menu_Tray_Exit
             Break
@@ -1412,6 +1510,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   If IsWindow(#AIWin) : CloseWindow(#AIWin) : EndIf
   If IsWindow(#SettingsWin) : CloseWindow(#SettingsWin) : EndIf
   If IsWindow(#HotkeyWin) : CloseWindow(#HotkeyWin) : EndIf
+  If IsWindow(#AboutWin) : CloseWindow(#AboutWin) : EndIf
   ReleaseRemappedKey()
   If hHook : UnhookWindowsHookEx_(hHook) : EndIf
   RemoveSysTrayIcon(#TrayIcon)
@@ -1443,7 +1542,7 @@ DataSection
   Data.s "LaunchWindow", "New window"
   Data.s "LaunchDefault", "System default"
   Data.s "AboutTitle", "About AI Copilot Mapper"
-  Data.s "AboutText", "Remaps the Copilot key or your own custom hotkey to an AI service or a system key."
+  Data.s "AboutText", "Remaps the Copilot key or your own hotkey to your favorite AI service, a local AI or a system key. Includes an embedded WebView2 browser, custom AI services and per-app profiles."
   Data.s "MsgBoxRunning", "The application is already running (check the system tray)."
   Data.s "CustomAINamePrompt", "Name of the AI service:\nExample: Open WebUI"
   Data.s "CustomAIURLPrompt", "URL to the AI service:\nExample: http://localhost:3000"
@@ -1486,9 +1585,8 @@ DataSection
   Data.s "", ""
 EndDataSection
 ; IDE Options = PureBasic 6.40 (Windows - x64)
-; CursorPosition = 918
-; FirstLine = 886
-; Folding = -------
+; CursorPosition = 19
+; Folding = ----------
 ; EnableXP
 ; DPIAware
 ; UseIcon = aicopilotmapper.ico
