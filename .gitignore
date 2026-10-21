@@ -1,0 +1,9 @@
+*.exe
+*.bak
+*~
+PureBasic.prefs
+# Byggeoutput (build.cmd / installer.iss)
+build/
+dist/
+# WebView2-data fra den indbyggede browser
+WebViewData/

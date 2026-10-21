@@ -29,5 +29,9 @@ To build the program from the source code, you will need PureBasic. Follow these
 6. Save the file as `AICopilotMapper.exe` in a folder of your choice.
 7. Run the `.exe` file! A small icon will now appear in the system tray, where you can right-click and configure the program.
 
+### Building a release
+
+`build.cmd` compiles the program and builds both the installer and a portable zip in `dist\`. It requires PureBasic and [Inno Setup 6](https://jrsoftware.org/isinfo.php) in their default install locations. The version number is read from `#AppVersion` in `aicopilotmapper.pb`.
+
 ---
 *Developed in PureBasic to give users back the freedom over their hardware.*
