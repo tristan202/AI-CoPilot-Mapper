@@ -7,3 +7,5 @@ build/
 dist/
 # WebView2-data fra den indbyggede browser
 WebViewData/
+# Brugerens egne indstillinger (skrives af programmet)
+AICopilotMapper.ini
