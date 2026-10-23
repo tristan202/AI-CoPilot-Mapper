@@ -15,10 +15,6 @@ Import "Kernel32.lib"
   GetUserDefaultUILanguage.w()
 EndImport
 
-Import "Comctl32.lib"
-  LoadIconWithScaleDown(hInst.i, pszName.i, cx.l, cy.l, *phico)
-EndImport
-
 ; --- CONSTANTS ---
 #AppName    = "AI Copilot Mapper"
 #AppVersion = "1.6.2"
@@ -52,9 +48,6 @@ CompilerIf Not Defined(ERROR_FILE_NOT_FOUND, #PB_Constant)
 CompilerEndIf
 CompilerIf Not Defined(LOCALE_SISO639LANGNAME, #PB_Constant)
   #LOCALE_SISO639LANGNAME = $59
-CompilerEndIf
-CompilerIf Not Defined(IDI_INFORMATION, #PB_Constant)
-  #IDI_INFORMATION = 32516
 CompilerEndIf
 
 ; ----------------------------------------------------------------------------
@@ -121,7 +114,7 @@ Global MappingPaused.i = 0
 Global CopilotKeyDown.i = 0
 Global ActiveRemapVKey.w = 0
 Global hMutex.i, hHook.i
-Global AboutIconHandle.i
+Global AboutIconImage.i
 
 ; Hook capture modal state
 Global RecordDlgOpen.i = 0
@@ -584,6 +577,28 @@ Procedure PopulateAICombo(ComboGadgetID.i)
   Next
 EndProcedure
 
+; Draws a blue circle with a white "i" on a transparent background
+Procedure.i CreateInfoIcon(Size.i)
+  Protected Image.i = CreateImage(#PB_Any, Size, Size, 32, #PB_Image_Transparent)
+  Protected Center.d = Size / 2.0
+  Protected StemW.d = Size * 0.14
+
+  If Image = 0 : ProcedureReturn 0 : EndIf
+  If StartVectorDrawing(ImageVectorOutput(Image))
+    AddPathCircle(Center, Center, Center - 0.5)
+    VectorSourceColor(RGBA(0, 103, 192, 255))
+    FillPath()
+
+    VectorSourceColor(RGBA(255, 255, 255, 255))
+    AddPathCircle(Center, Size * 0.29, Size * 0.09)
+    FillPath()
+    AddPathBox(Center - StemW / 2, Size * 0.43, StemW, Size * 0.33)
+    FillPath()
+    StopVectorDrawing()
+  EndIf
+  ProcedureReturn Image
+EndProcedure
+
 Procedure.s AIWindowTitle()
   ProcedureReturn T("AIWindowTitle") + " v" + #AppVersion
 EndProcedure
@@ -617,15 +632,12 @@ Procedure OpenEmbeddedAI(URL.s)
     StickyWindow(#AIWin, 0)
     ComboBoxGadget(#AICombo, 10, 5, 250, 25)
     PopulateAICombo(#AICombo)
-    ; Icon-only button with the standard Windows information icon
-    ButtonGadget(#AIAboutBtn, 0, 5, 30, 25, "")
-    If AboutIconHandle = 0
-      LoadIconWithScaleDown(0, #IDI_INFORMATION, DesktopScaledX(16), DesktopScaledY(16), @AboutIconHandle)
-    EndIf
-    If AboutIconHandle
-      SendMessage_(GadgetID(#AIAboutBtn), #BM_SETIMAGE, #IMAGE_ICON, AboutIconHandle)
+    ; Icon-only button with an information icon
+    If AboutIconImage = 0 : AboutIconImage = CreateInfoIcon(DesktopScaledX(16)) : EndIf
+    If AboutIconImage
+      ButtonImageGadget(#AIAboutBtn, 0, 5, 30, 25, ImageID(AboutIconImage))
     Else
-      SetGadgetText(#AIAboutBtn, "?")
+      ButtonGadget(#AIAboutBtn, 0, 5, 30, 25, "?")
     EndIf
     GadgetToolTip(#AIAboutBtn, T("MenuAbout"))
     If WebViewGadget(#AIGadget, 0, 35, 1024, 768 - 35)
@@ -1529,7 +1541,6 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   ReleaseRemappedKey()
   If hHook : UnhookWindowsHookEx_(hHook) : EndIf
   RemoveSysTrayIcon(#TrayIcon)
-  If AboutIconHandle : DestroyIcon_(AboutIconHandle) : EndIf
   If hMutex : CloseHandle_(hMutex) : EndIf
 EndIf
 
