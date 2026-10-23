@@ -15,6 +15,10 @@ Import "Kernel32.lib"
   GetUserDefaultUILanguage.w()
 EndImport
 
+Import "Comctl32.lib"
+  LoadIconWithScaleDown(hInst.i, pszName.i, cx.l, cy.l, *phico)
+EndImport
+
 ; --- CONSTANTS ---
 #AppName    = "AI Copilot Mapper"
 #AppVersion = "1.6.2"
@@ -48,6 +52,9 @@ CompilerIf Not Defined(ERROR_FILE_NOT_FOUND, #PB_Constant)
 CompilerEndIf
 CompilerIf Not Defined(LOCALE_SISO639LANGNAME, #PB_Constant)
   #LOCALE_SISO639LANGNAME = $59
+CompilerEndIf
+CompilerIf Not Defined(IDI_INFORMATION, #PB_Constant)
+  #IDI_INFORMATION = 32516
 CompilerEndIf
 
 ; ----------------------------------------------------------------------------
@@ -114,6 +121,7 @@ Global MappingPaused.i = 0
 Global CopilotKeyDown.i = 0
 Global ActiveRemapVKey.w = 0
 Global hMutex.i, hHook.i
+Global AboutIconHandle.i
 
 ; Hook capture modal state
 Global RecordDlgOpen.i = 0
@@ -582,11 +590,8 @@ EndProcedure
 
 ; Keeps the About button right-aligned in the top row and the WebView filling the rest
 Procedure LayoutAIWindow()
-  Protected BtnW.i
   If Not IsWindow(#AIWin) : ProcedureReturn : EndIf
-  BtnW = GetGadgetTextWidth(#AIAboutBtn, T("MenuAbout"))
-  If BtnW < 80 : BtnW = 80 : EndIf
-  ResizeGadget(#AIAboutBtn, WindowWidth(#AIWin) - BtnW - 10, 5, BtnW, 25)
+  ResizeGadget(#AIAboutBtn, WindowWidth(#AIWin) - 30 - 10, 5, 30, 25)
   If IsGadget(#AIGadget)
     ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
   EndIf
@@ -612,7 +617,17 @@ Procedure OpenEmbeddedAI(URL.s)
     StickyWindow(#AIWin, 0)
     ComboBoxGadget(#AICombo, 10, 5, 250, 25)
     PopulateAICombo(#AICombo)
-    ButtonGadget(#AIAboutBtn, 0, 5, 80, 25, T("MenuAbout"))
+    ; Icon-only button with the standard Windows information icon
+    ButtonGadget(#AIAboutBtn, 0, 5, 30, 25, "")
+    If AboutIconHandle = 0
+      LoadIconWithScaleDown(0, #IDI_INFORMATION, DesktopScaledX(16), DesktopScaledY(16), @AboutIconHandle)
+    EndIf
+    If AboutIconHandle
+      SendMessage_(GadgetID(#AIAboutBtn), #BM_SETIMAGE, #IMAGE_ICON, AboutIconHandle)
+    Else
+      SetGadgetText(#AIAboutBtn, "?")
+    EndIf
+    GadgetToolTip(#AIAboutBtn, T("MenuAbout"))
     If WebViewGadget(#AIGadget, 0, 35, 1024, 768 - 35)
       SetGadgetText(#AIGadget, URL)
     EndIf
@@ -1426,7 +1441,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
               UpdateSettingsUI()
               If IsWindow(#AIWin)
                 SetWindowTitle(#AIWin, AIWindowTitle())
-                SetGadgetText(#AIAboutBtn, T("MenuAbout"))
+                GadgetToolTip(#AIAboutBtn, T("MenuAbout"))
                 LayoutAIWindow()
               EndIf
               If IsWindow(#AboutWin) : CloseWindow(#AboutWin) : EndIf
@@ -1514,6 +1529,7 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
   ReleaseRemappedKey()
   If hHook : UnhookWindowsHookEx_(hHook) : EndIf
   RemoveSysTrayIcon(#TrayIcon)
+  If AboutIconHandle : DestroyIcon_(AboutIconHandle) : EndIf
   If hMutex : CloseHandle_(hMutex) : EndIf
 EndIf
 
