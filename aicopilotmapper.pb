@@ -606,7 +606,8 @@ EndProcedure
 ; Keeps the About button right-aligned in the top row and the WebView filling the rest
 Procedure LayoutAIWindow()
   If Not IsWindow(#AIWin) : ProcedureReturn : EndIf
-  ResizeGadget(#AIAboutBtn, WindowWidth(#AIWin) - 30 - 10, 5, 30, 25)
+  ; 16x16 icon, vertically centred on the 25 px high AI selector
+  ResizeGadget(#AIAboutBtn, WindowWidth(#AIWin) - 16 - 14, 9, 16, 16)
   If IsGadget(#AIGadget)
     ResizeGadget(#AIGadget, 0, 35, WindowWidth(#AIWin), WindowHeight(#AIWin) - 35)
   EndIf
@@ -635,7 +636,8 @@ Procedure OpenEmbeddedAI(URL.s)
     ; Icon-only button with an information icon
     If AboutIconImage = 0 : AboutIconImage = CreateInfoIcon(DesktopScaledX(16)) : EndIf
     If AboutIconImage
-      ButtonImageGadget(#AIAboutBtn, 0, 5, 30, 25, ImageID(AboutIconImage))
+      ; Borderless: a clickable ImageGadget instead of a button
+      ImageGadget(#AIAboutBtn, 0, 9, 16, 16, ImageID(AboutIconImage))
     Else
       ButtonGadget(#AIAboutBtn, 0, 5, 30, 25, "?")
     EndIf
@@ -1474,7 +1476,9 @@ If OpenWindow(#MainWin, 0, 0, 0, 0, "AICopilotMapper", #PB_Window_Invisible)
             CloseHotkeyRecorder()
 
           Case #AIAboutBtn
-            OpenAboutWindow()
+            If EventType() = #PB_EventType_LeftClick Or GadgetType(#AIAboutBtn) = #PB_GadgetType_Button
+              OpenAboutWindow()
+            EndIf
 
           Case #About_LinkGadget
             RunProgram(#GitHubURL, "", "")
